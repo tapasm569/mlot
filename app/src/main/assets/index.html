@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MLOT Master & Seller App</title>
-    <!-- Tailwind CSS CDN for modern UI design -->
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Tailwind CSS v3 CDN for mobile compatibility -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome for modern icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -388,10 +388,8 @@
 
     <!-- JavaScript Controllers -->
     <script>
-        // Valid Seller Mobile numbers registered under MLOT ID 12345
         const validSellerNumbers = ["9876543210", "8765432109", "7654321098", "6543210987", "5432109876"];
 
-        // Toggle Login form style between Mlot and Seller
         function switchLoginTab(type) {
             const tabMlot = document.getElementById('tab-mlot');
             const tabSeller = document.getElementById('tab-seller');
@@ -411,7 +409,6 @@
             }
         }
 
-        // Handle Login Action with Validation for MLOT User & Sellers
         function handleLogin(event, role) {
             event.preventDefault();
 
@@ -440,12 +437,10 @@
             }
         }
 
-        // Logout Action -> reveals login screen again
         function logout() {
             document.getElementById('login-screen').classList.remove('hidden');
         }
 
-        // Navigation Tab Switcher Logic
         function switchTab(tabName) {
             document.querySelectorAll('.app-page').forEach(page => {
                 page.classList.add('hidden');
@@ -472,7 +467,6 @@
             }
         }
 
-        // Handle Purchase Category Selector (1 PM, 6 PM, 8 PM)
         function selectStockCategory(timeSlot) {
             document.querySelectorAll('.stock-cat-btn').forEach(btn => {
                 btn.className = "stock-cat-btn py-3 px-2 bg-white text-slate-700 border border-slate-200 rounded-xl text-xs font-bold shadow-xs hover:bg-slate-50 transition-all flex flex-col items-center justify-center gap-1";
@@ -484,7 +478,6 @@
             document.getElementById('active-category-title').innerText = `${timeSlot.toUpperCase()} Stock Pool`;
         }
 
-        // Interaction placeholder for the account action buttons
         function triggerAction(actionName) {
             alert(`Opening action module: ${actionName}`);
         }
