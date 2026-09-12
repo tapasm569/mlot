@@ -1,1 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLOT Master & Seller App</title>
+    <!-- Tailwind CSS CDN for modern UI design -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- FontAwesome for modern icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 font-sans antialiased flex justify-center items-center min-h-screen m-0">
 
+    <!-- Mobile App Container Wrapper -->
+    <div id="app-container" class="w-full max-w-md h-[100vh] sm:h-[850px] sm:rounded-3xl bg-slate-50 shadow-2xl flex flex-col relative overflow-hidden">
+
+        <!-- ================= LOGIN SCREEN ================= -->
+        <div id="login-screen" class="absolute inset-0 bg-gradient-to-br from-indigo-900 via-slate-900 to-purple-900 z-50 flex flex-col justify-between p-6 text-white overflow-y-auto">
+            <div class="mt-6 text-center">
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-2xl shadow-lg mb-3">
+                    <i class="fa-solid fa-layer-group text-3xl text-white"></i>
+                </div>
+                <h1 class="text-2xl font-bold tracking-wide">MLOT Portal</h1>
+                <p class="text-xs text-indigo-200 mt-1">Master & Seller Management System</p>
+            </div>
+
+            <!-- Login Card -->
+            <div class="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/10 shadow-xl my-auto">
+                <!-- Role Toggle Tabs -->
+                <div class="flex bg-black/30 p-1 rounded-xl mb-6">
+                    <button onclick="switchLoginTab('mlot')" id="tab-mlot" class="flex-1 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white transition-all shadow">Mlot User</button>
+                    <button onclick="switchLoginTab('seller')" id="tab-seller" class="flex-1 py-2 text-xs font-semibold rounded-lg text-slate-300 transition-all">Seller</button>
+                </div>
+
+                <!-- Mlot User Form -->
+                <form id="form-mlot" onsubmit="handleLogin(event, 'mlot')" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-medium text-indigo-200 mb-1">Mlot ID</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><i class="fa-solid fa-id-badge"></i></span>
+                            <input type="text" id="mlot-id-input" required value="12345" placeholder="Enter Mlot ID" class="w-full pl-10 pr-4 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white placeholder-slate-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-indigo-200 mb-1">Password</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><i class="fa-solid fa-lock"></i></span>
+                            <input type="password" id="mlot-pass-input" required value="9932655607" placeholder="••••••••" class="w-full pl-10 pr-4 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white placeholder-slate-500">
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full py-3 bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 text-white rounded-xl font-semibold text-sm shadow-lg shadow-indigo-500/30 transition-all transform active:scale-95">
+                        Login as Mlot User
+                    </button>
+                    <p class="text-[10px] text-center text-indigo-200/70 mt-1">Default ID: 12345 | Pass: 9932655607</p>
+                </form>
+
+                <!-- Seller Form -->
+                <form id="form-seller" onsubmit="handleLogin(event, 'seller')" class="space-y-4 hidden">
+                    <div>
+                        <label class="block text-xs font-medium text-indigo-200 mb-1">Mlot ID</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><i class="fa-solid fa-id-badge"></i></span>
+                            <input type="text" id="seller-mlot-id" required value="12345" placeholder="Enter Mlot ID" class="w-full pl-10 pr-4 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white placeholder-slate-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-indigo-200 mb-1">Seller Mobile Number (Password)</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><i class="fa-solid fa-phone"></i></span>
+                            <input type="tel" id="seller-mobile-input" required placeholder="Enter Seller Mobile Number" class="w-full pl-10 pr-4 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white placeholder-slate-500">
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl font-semibold text-sm shadow-lg shadow-emerald-500/30 transition-all transform active:scale-95">
+                        Login as Seller
+                    </button>
+                    <p class="text-[10px] text-center text-emerald-200/70 mt-1">Use Mlot ID (12345) & Seller Mobile (e.g., 9876543210)</p>
+                </form>
+            </div>
+
+            <div class="text-center text-xs text-slate-400 mb-2">
+                &copy; 2026 MLOT Systems. Secure Access.
+            </div>
+        </div>
+
+        <!-- ================= MAIN APP INTERFACE ================= -->
+        
+        <!-- App Top Header Bar -->
+        <header class="bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center z-10 shadow-sm">
+            <div class="flex items-center space-x-2">
+                <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md">M</div>
+                <div>
+                    <h2 id="app-header-title" class="text-xs font-bold text-slate-800 leading-tight">MLOT Dashboard (12345)</h2>
+                    <span class="text-[10px] text-emerald-600 font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Online</span>
+                </div>
+            </div>
+            <button onclick="logout()" class="text-slate-500 hover:text-red-600 text-xs font-medium flex items-center gap-1 bg-slate-100 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition-all">
+                <i class="fa-solid fa-power-off"></i> Logout
+            </button>
+        </header>
+
+        <!-- Dynamic Content Pages -->
+        <main class="flex-1 overflow-y-auto bg-slate-100 relative">
+
+            <!-- 1. SALE PAGE (Default View) -->
+            <section id="page-sale" class="app-page p-4 space-y-4">
+                <!-- Modern Banner -->
+                <div class="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden">
+                    <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-white/10 rounded-full blur-xl"></div>
+                    <span class="text-[10px] uppercase tracking-wider font-semibold bg-white/20 px-2 py-0.5 rounded-md">Live Report</span>
+                    <h2 class="text-lg font-bold mt-1">Todays Sale Report</h2>
+                    <p class="text-xs text-blue-100 mt-0.5">Real-time performance summary of all active sellers.</p>
+                </div>
+
+                <!-- Scrollable Table Card -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                        <span class="text-xs font-bold text-slate-700">Seller Breakdown</span>
+                        <span class="text-[10px] text-slate-400">Scroll horizontally →</span>
+                    </div>
+                    <div class="overflow-x-auto max-h-[420px]">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="bg-slate-100 text-slate-600 font-semibold uppercase text-[10px] tracking-wider border-b border-slate-200 sticky top-0">
+                                    <th class="p-3">Sl no</th>
+                                    <th class="p-3">Saler Code</th>
+                                    <th class="p-3">Saler Name</th>
+                                    <th class="p-3">Sale</th>
+                                    <th class="p-3">Unsold</th>
+                                    <th class="p-3">Price</th>
+                                    <th class="p-3">Due Payment</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-slate-700 font-medium">
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="p-3 text-slate-400">01</td>
+                                    <td class="p-3 font-semibold text-indigo-600">SL-101</td>
+                                    <td class="p-3">Rahul Mondal <span class="block text-[9px] text-slate-400">Ph: 9876543210</span></td>
+                                    <td class="p-3 text-emerald-600 font-bold">140</td>
+                                    <td class="p-3 text-amber-600">10</td>
+                                    <td class="p-3">₹7,000</td>
+                                    <td class="p-3 text-red-500 font-bold">₹1,200</td>
+                                </tr>
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="p-3 text-slate-400">02</td>
+                                    <td class="p-3 font-semibold text-indigo-600">SL-102</td>
+                                    <td class="p-3">Amit Biswas <span class="block text-[9px] text-slate-400">Ph: 8765432109</span></td>
+                                    <td class="p-3 text-emerald-600 font-bold">210</td>
+                                    <td class="p-3 text-amber-600">40</td>
+                                    <td class="p-3">₹10,500</td>
+                                    <td class="p-3 text-emerald-600 font-bold">₹0</td>
+                                </tr>
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="p-3 text-slate-400">03</td>
+                                    <td class="p-3 font-semibold text-indigo-600">SL-103</td>
+                                    <td class="p-3">Subrata Das <span class="block text-[9px] text-slate-400">Ph: 7654321098</span></td>
+                                    <td class="p-3 text-emerald-600 font-bold">95</td>
+                                    <td class="p-3 text-amber-600">05</td>
+                                    <td class="p-3">₹4,750</td>
+                                    <td class="p-3 text-red-500 font-bold">₹450</td>
+                                </tr>
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="p-3 text-slate-400">04</td>
+                                    <td class="p-3 font-semibold text-indigo-600">SL-104</td>
+                                    <td class="p-3">Prosenjit Roy <span class="block text-[9px] text-slate-400">Ph: 6543210987</span></td>
+                                    <td class="p-3 text-emerald-600 font-bold">300</td>
+                                    <td class="p-3 text-amber-600">50</td>
+                                    <td class="p-3">₹15,000</td>
+                                    <td class="p-3 text-red-500 font-bold">₹2,300</td>
+                                </tr>
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="p-3 text-slate-400">05</td>
+                                    <td class="p-3 font-semibold text-indigo-600">SL-105</td>
+                                    <td class="p-3">Suman Ghosh <span class="block text-[9px] text-slate-400">Ph: 5432109876</span></td>
+                                    <td class="p-3 text-emerald-600 font-bold">180</td>
+                                    <td class="p-3 text-amber-600">20</td>
+                                    <td class="p-3">₹9,000</td>
+                                    <td class="p-3 text-emerald-600 font-bold">₹0</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. PURCHASE PAGE -->
+            <section id="page-purchase" class="app-page p-4 space-y-4 hidden">
+                <!-- Modern Banner -->
+                <div class="bg-gradient-to-r from-purple-600 to-indigo-700 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden">
+                    <span class="text-[10px] uppercase tracking-wider font-semibold bg-white/20 px-2 py-0.5 rounded-md">Stock Inventory</span>
+                    <h2 class="text-lg font-bold mt-1">Todays Stock Report</h2>
+                    <p class="text-xs text-purple-100 mt-0.5">Manage and allocate ticket stock today to sale your seller.</p>
+                </div>
+
+                <!-- 3 Main Category Buttons -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Select Draw Category</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="selectStockCategory('1pm')" id="cat-1pm" class="stock-cat-btn py-3 px-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md transition-all flex flex-col items-center justify-center gap-1">
+                            <i class="fa-regular fa-clock text-sm"></i> 1 PM
+                        </button>
+                        <button onclick="selectStockCategory('6pm')" id="cat-6pm" class="stock-cat-btn py-3 px-2 bg-white text-slate-700 border border-slate-200 rounded-xl text-xs font-bold shadow-xs hover:bg-slate-50 transition-all flex flex-col items-center justify-center gap-1">
+                            <i class="fa-regular fa-clock text-sm"></i> 6 PM
+                        </button>
+                        <button onclick="selectStockCategory('8pm')" id="cat-8pm" class="stock-cat-btn py-3 px-2 bg-white text-slate-700 border border-slate-200 rounded-xl text-xs font-bold shadow-xs hover:bg-slate-50 transition-all flex flex-col items-center justify-center gap-1">
+                            <i class="fa-regular fa-clock text-sm"></i> 8 PM
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stock List Panel -->
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
+                    <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                        <span id="active-category-title" class="text-xs font-bold text-indigo-600 uppercase tracking-wider">1 PM Stock Pool</span>
+                        <span class="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-semibold">Available: 1,450 Tkts</span>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center">
+                            <div>
+                                <h4 class="text-xs font-bold text-slate-800">Series A-Z (Lottery Batch)</h4>
+                                <p class="text-[10px] text-slate-500">Allocated to Sellers: 850 pcs</p>
+                            </div>
+                            <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">600 Left</span>
+                        </div>
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center">
+                            <div>
+                                <h4 class="text-xs font-bold text-slate-800">Series X-Y (Special Draw)</h4>
+                                <p class="text-[10px] text-slate-500">Allocated to Sellers: 500 pcs</p>
+                            </div>
+                            <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">350 Left</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. MASTER PAGE -->
+            <section id="page-master" class="app-page p-4 space-y-4 hidden">
+                <!-- Upper Banner -->
+                <div class="bg-gradient-to-r from-slate-800 to-indigo-900 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden">
+                    <span class="text-[10px] uppercase tracking-wider font-semibold bg-white/20 px-2 py-0.5 rounded-md">Management Directory</span>
+                    <h2 class="text-lg font-bold mt-1">Master</h2>
+                    <p class="text-xs text-slate-300 mt-0.5">All registered seller profiles and detailed records.</p>
+                </div>
+
+                <!-- Seller Details List -->
+                <div class="space-y-2.5">
+                    <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">01</div>
+                            <div>
+                                <h4 class="text-xs font-bold text-slate-800">Rahul Mondal <span class="text-[10px] text-indigo-600 font-normal">#SL-101</span></h4>
+                                <p class="text-[10px] text-slate-500"><i class="fa-solid fa-phone text-[9px] mr-1"></i> +91 9876543210 (Pass)</p>
+                            </div>
+                        </div>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-600 font-semibold px-2 py-1 rounded-lg">Active</span>
+                    </div>
+                    <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">02</div>
+                            <div>
+                                <h4 class="text-xs font-bold text-slate-800">Amit Biswas <span class="text-[10px] text-indigo-600 font-normal">#SL-102</span></h4>
+                                <p class="text-[10px] text-slate-500"><i class="fa-solid fa-phone text-[9px] mr-1"></i> +91 8765432109 (Pass)</p>
+                            </div>
+                        </div>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-600 font-semibold px-2 py-1 rounded-lg">Active</span>
+                    </div>
+                    <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">03</div>
+                            <div>
+                                <h4 class="text-xs font-bold text-slate-800">Subrata Das <span class="text-[10px] text-indigo-600 font-normal">#SL-103</span></h4>
+                                <p class="text-[10px] text-slate-500"><i class="fa-solid fa-phone text-[9px] mr-1"></i> +91 7654321098 (Pass)</p>
+                            </div>
+                        </div>
+                        <span class="text-[10px] bg-amber-50 text-amber-600 font-semibold px-2 py-1 rounded-lg">Pending</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. ACCOUNT PAGE -->
+            <section id="page-account" class="app-page p-4 space-y-4 hidden">
+                <!-- Banner -->
+                <div class="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden">
+                    <span class="text-[10px] uppercase tracking-wider font-semibold bg-white/20 px-2 py-0.5 rounded-md">Financial & Ops</span>
+                    <h2 class="text-lg font-bold mt-1">Account Section</h2>
+                    <p class="text-xs text-emerald-100 mt-0.5">Quick access shortcuts for entries, ledgers, and accounts.</p>
+                </div>
+
+                <!-- Modern Click Buttons Grid -->
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="triggerAction('Sale Entry')" class="bg-white hover:bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col items-center text-center transition-all transform active:scale-95 group">
+                        <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg mb-2 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
+                            <i class="fa-solid fa-cart-plus"></i>
+                        </div>
+                        <span class="text-xs font-bold text-slate-800">Sale Entry</span>
+                        <span class="text-[9px] text-slate-400 mt-0.5">Record new sale</span>
+                    </button>
+
+                    <button onclick="triggerAction('Sold Ticket')" class="bg-white hover:bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col items-center text-center transition-all transform active:scale-95 group">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg mb-2 group-hover:bg-emerald-600 group-hover:text-white transition-all shadow-sm">
+                            <i class="fa-solid fa-ticket"></i>
+                        </div>
+                        <span class="text-xs font-bold text-slate-800">Sold Ticket</span>
+                        <span class="text-[9px] text-slate-400 mt-0.5">View sold inventory</span>
+                    </button>
+
+                    <button onclick="triggerAction('Unsold Ticket')" class="bg-white hover:bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col items-center text-center transition-all transform active:scale-95 group">
+                        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg mb-2 group-hover:bg-amber-600 group-hover:text-white transition-all shadow-sm">
+                            <i class="fa-solid fa-ban"></i>
+                        </div>
+                        <span class="text-xs font-bold text-slate-800">Unsold Ticket</span>
+                        <span class="text-[9px] text-slate-400 mt-0.5">Unsold returns</span>
+                    </button>
+
+                    <button onclick="triggerAction('Purchase Entry')" class="bg-white hover:bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col items-center text-center transition-all transform active:scale-95 group">
+                        <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-lg mb-2 group-hover:bg-purple-600 group-hover:text-white transition-all shadow-sm">
+                            <i class="fa-solid fa-bag-shopping"></i>
+                        </div>
+                        <span class="text-xs font-bold text-slate-800">Purchase Entry</span>
+                        <span class="text-[9px] text-slate-400 mt-0.5">Add stock purchase</span>
+                    </button>
+
+                    <button onclick="triggerAction('Payment History')" class="bg-white hover:bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col items-center text-center transition-all transform active:scale-95 group">
+                        <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-lg mb-2 group-hover:bg-teal-600 group-hover:text-white transition-all shadow-sm">
+                            <i class="fa-solid fa-clock-rotate-left"></i>
+                        </div>
+                        <span class="text-xs font-bold text-slate-800">Payment History</span>
+                        <span class="text-[9px] text-slate-400 mt-0.5">Transactions log</span>
+                    </button>
+
+                    <button onclick="triggerAction('Ledger Book')" class="bg-white hover:bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col items-center text-center transition-all transform active:scale-95 group">
+                        <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg mb-2 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">
+                            <i class="fa-solid fa-book-open"></i>
+                        </div>
+                        <span class="text-xs font-bold text-slate-800">Ledger Book</span>
+                        <span class="text-[9px] text-slate-400 mt-0.5">Account balances</span>
+                    </button>
+                </div>
+
+                <!-- Add Seller Full Width Button -->
+                <button onclick="triggerAction('Add Seller')" class="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-2xl font-semibold text-xs shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 transition-all transform active:scale-95">
+                    <i class="fa-solid fa-user-plus text-sm"></i> Add Seller
+                </button>
+            </section>
+
+        </main>
+
+        <!-- ================= FOOTER NAVIGATION BAR ================= -->
+        <footer id="footer-nav" class="bg-white border-t border-slate-200 px-2 py-2 flex justify-around items-center z-10 shadow-lg">
+            <!-- Sale Tab -->
+            <button onclick="switchTab('sale')" id="nav-sale" class="nav-btn flex flex-col items-center justify-center w-16 py-1 text-indigo-600 transition-all">
+                <i class="fa-solid fa-chart-line text-base mb-0.5"></i>
+                <span class="text-[10px] font-bold">Sale</span>
+            </button>
+
+            <!-- Purchase Tab -->
+            <button onclick="switchTab('purchase')" id="nav-purchase" class="nav-btn flex flex-col items-center justify-center w-16 py-1 text-slate-400 hover:text-slate-600 transition-all">
+                <i class="fa-solid fa-boxes-stacked text-base mb-0.5"></i>
+                <span class="text-[10px] font-medium">Purchase</span>
+            </button>
+
+            <!-- Master Center Branding Button -->
+            <button onclick="switchTab('master')" id="nav-master" class="nav-btn flex flex-col items-center justify-center px-3 py-0.5 text-slate-400 hover:text-slate-600 transition-all">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md mb-0.5">
+                    <i class="fa-solid fa-crown text-xs"></i>
+                </div>
+                <span class="text-[10px] font-medium">Master</span>
+            </button>
+
+            <!-- Account Tab -->
+            <button onclick="switchTab('account')" id="nav-account" class="nav-btn flex flex-col items-center justify-center w-16 py-1 text-slate-400 hover:text-slate-600 transition-all">
+                <i class="fa-solid fa-wallet text-base mb-0.5"></i>
+                <span class="text-[10px] font-medium">Account</span>
+            </button>
+        </footer>
+
+    </div>
+
+    <!-- JavaScript Controllers -->
+    <script>
+        // Valid Seller Mobile numbers registered under MLOT ID 12345
+        const validSellerNumbers = ["9876543210", "8765432109", "7654321098", "6543210987", "5432109876"];
+
+        // Toggle Login form style between Mlot and Seller
+        function switchLoginTab(type) {
+            const tabMlot = document.getElementById('tab-mlot');
+            const tabSeller = document.getElementById('tab-seller');
+            const formMlot = document.getElementById('form-mlot');
+            const formSeller = document.getElementById('form-seller');
+
+            if (type === 'mlot') {
+                tabMlot.className = "flex-1 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white transition-all shadow";
+                tabSeller.className = "flex-1 py-2 text-xs font-semibold rounded-lg text-slate-300 transition-all";
+                formMlot.classList.remove('hidden');
+                formSeller.classList.add('hidden');
+            } else {
+                tabSeller.className = "flex-1 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white transition-all shadow";
+                tabMlot.className = "flex-1 py-2 text-xs font-semibold rounded-lg text-slate-300 transition-all";
+                formSeller.classList.remove('hidden');
+                formMlot.classList.add('hidden');
+            }
+        }
+
+        // Handle Login Action with Validation for MLOT User & Sellers
+        function handleLogin(event, role) {
+            event.preventDefault();
+
+            if (role === 'mlot') {
+                const mlotId = document.getElementById('mlot-id-input').value.trim();
+                const mlotPass = document.getElementById('mlot-pass-input').value.trim();
+
+                if (mlotId === "12345" && mlotPass === "9932655607") {
+                    document.getElementById('app-header-title').innerText = "MLOT Dashboard (ID: 12345)";
+                    document.getElementById('login-screen').classList.add('hidden');
+                    switchTab('sale');
+                } else {
+                    alert("Invalid Mlot ID or Password!\nUse ID: 12345, Password: 9932655607");
+                }
+            } else if (role === 'seller') {
+                const sellerMlotId = document.getElementById('seller-mlot-id').value.trim();
+                const sellerMobile = document.getElementById('seller-mobile-input').value.trim();
+
+                if (sellerMlotId === "12345" && validSellerNumbers.includes(sellerMobile)) {
+                    document.getElementById('app-header-title').innerText = `Seller Portal (Ph: ${sellerMobile})`;
+                    document.getElementById('login-screen').classList.add('hidden');
+                    switchTab('sale');
+                } else {
+                    alert("Invalid Mlot ID or Seller Mobile Number!\nEnsure Mlot ID is 12345 and use a valid registered seller mobile number as password (e.g. 9876543210).");
+                }
+            }
+        }
+
+        // Logout Action -> reveals login screen again
+        function logout() {
+            document.getElementById('login-screen').classList.remove('hidden');
+        }
+
+        // Navigation Tab Switcher Logic
+        function switchTab(tabName) {
+            document.querySelectorAll('.app-page').forEach(page => {
+                page.classList.add('hidden');
+            });
+
+            document.getElementById(`page-${tabName}`).classList.remove('hidden');
+
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.className = "nav-btn flex flex-col items-center justify-center w-16 py-1 text-slate-400 hover:text-slate-600 transition-all";
+                const span = btn.querySelector('span');
+                if(span) span.className = "text-[10px] font-medium";
+            });
+
+            const masterBtn = document.getElementById('nav-master');
+            masterBtn.className = "nav-btn flex flex-col items-center justify-center px-3 py-0.5 text-slate-400 hover:text-slate-600 transition-all";
+            
+            const activeBtn = document.getElementById(`nav-${tabName}`);
+            if (tabName === 'master') {
+                activeBtn.className = "nav-btn flex flex-col items-center justify-center px-3 py-0.5 text-indigo-600 transition-all";
+                activeBtn.querySelector('span').className = "text-[10px] font-bold";
+            } else {
+                activeBtn.className = "nav-btn flex flex-col items-center justify-center w-16 py-1 text-indigo-600 transition-all";
+                activeBtn.querySelector('span').className = "text-[10px] font-bold";
+            }
+        }
+
+        // Handle Purchase Category Selector (1 PM, 6 PM, 8 PM)
+        function selectStockCategory(timeSlot) {
+            document.querySelectorAll('.stock-cat-btn').forEach(btn => {
+                btn.className = "stock-cat-btn py-3 px-2 bg-white text-slate-700 border border-slate-200 rounded-xl text-xs font-bold shadow-xs hover:bg-slate-50 transition-all flex flex-col items-center justify-center gap-1";
+            });
+            
+            const selectedBtn = document.getElementById(`cat-${timeSlot}`);
+            selectedBtn.className = "stock-cat-btn py-3 px-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md transition-all flex flex-col items-center justify-center gap-1";
+            
+            document.getElementById('active-category-title').innerText = `${timeSlot.toUpperCase()} Stock Pool`;
+        }
+
+        // Interaction placeholder for the account action buttons
+        function triggerAction(actionName) {
+            alert(`Opening action module: ${actionName}`);
+        }
+    </script>
+</body>
+</html>
