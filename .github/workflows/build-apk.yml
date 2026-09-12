@@ -23,10 +23,8 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK Components
-        run: |
-          yes | sdkmanager --licenses
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      - name: Accept Android Licenses
+        run: yes | sdkmanager --licenses || true
 
       - name: Download and Setup Gradle 8.4
         run: |
@@ -34,8 +32,11 @@ jobs:
           unzip -q gradle-8.4-bin.zip
           echo "$PWD/gradle-8.4/bin" >> $GITHUB_PATH
 
-      - name: Build Debug APK with Gradle
-        run: gradle assembleDebug
+      - name: Generate Gradle Wrapper
+        run: gradle wrapper --gradle-version 8.4
+
+      - name: Build Debug APK with Gradle Wrapper
+        run: ./gradlew assembleDebug
 
       - name: Rename APK File
         run: mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/mlotconnet.apk
