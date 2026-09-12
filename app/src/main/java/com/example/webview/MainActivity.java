@@ -5,6 +5,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.appcompat.app.AppCompatActivity;
+import com.example.webview.R;
 
 public class MainActivity extends AppCompatActivity {
     private WebView webView;
