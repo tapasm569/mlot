@@ -20,6 +20,9 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Create local.properties for Android SDK
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
       - name: Download and Setup Gradle 8.4
         run: |
           wget https://services.gradle.org/distributions/gradle-8.4-bin.zip
