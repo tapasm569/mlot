@@ -39,7 +39,7 @@ jobs:
         run: ./gradlew assembleDebug
 
       - name: Rename APK File
-        run: mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/mlotconnet.apk
+        run: mv app/build/outputs/apk/debug/*.apk app/build/outputs/apk/debug/mlotconnet.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
