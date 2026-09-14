@@ -20,6 +20,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.google.firebase.FirebaseApp;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.messaging.FirebaseMessaging;
@@ -33,6 +34,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        // Explicitly initialize Firebase to prevent silent hanging
+        FirebaseApp.initializeApp(this);
 
         // REQUIRED FOR ANDROID 13+: Ask user for permission to show notifications
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -82,14 +86,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void fetchFirebaseToken() {
+        // Immediate popup to prove this method is running
+        Toast.makeText(this, "Requesting Firebase Token...", Toast.LENGTH_SHORT).show();
+
         FirebaseMessaging.getInstance().getToken()
             .addOnCompleteListener(new OnCompleteListener<String>() {
                 @Override
                 public void onComplete(@NonNull Task<String> task) {
                     if (!task.isSuccessful()) {
                         Log.w("FCM", "Fetching FCM registration token failed", task.getException());
-                        // Tell the user it failed on the phone side
-                        Toast.makeText(MainActivity.this, "Firebase Token Failed: Check internet or JSON", Toast.LENGTH_LONG).show();
+                        Toast.makeText(MainActivity.this, "Firebase Token Failed: Check JSON or Network", Toast.LENGTH_LONG).show();
                         return;
                     }
 
@@ -97,7 +103,6 @@ public class MainActivity extends AppCompatActivity {
                     fcmDeviceToken = task.getResult();
                     Log.d("FCM", "Device Token: " + fcmDeviceToken);
                     
-                    // Tell the user it generated successfully
                     Toast.makeText(MainActivity.this, "FCM Token Generated Successfully!", Toast.LENGTH_SHORT).show();
 
                     // Send the token directly to the running HTML file
@@ -135,4 +140,4 @@ public class MainActivity extends AppCompatActivity {
             super.onBackPressed();
         }
     }
-                }
+}
