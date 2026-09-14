@@ -54,14 +54,14 @@ public class MainActivity extends AppCompatActivity {
         cookieManager.setAcceptFileSchemeCookies(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
 
-        // Add JavaScript interface to handle blob and data URL downloads
+        // Add JavaScript interface to handle blob and data URL downloads & viewing
         webView.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
 
         // CRITICAL: Handle UPI, WhatsApp, and Phone Call intents externally
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                if (url.startsWith("upi://") || url.startsWith("tel:") || url.startsWith("whatsapp://") || url.startsWith("https://wa.me/")) {
+                if (url.startsWith("upi://") || url.startsWith("tel://") || url.startsWith("whatsapp://") || url.startsWith("https://wa.me/")) {
                     try {
                         Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                         startActivity(intent);
@@ -104,7 +104,6 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 if (url.startsWith("blob:") || url.startsWith("data:")) {
-                    // Inject JS to fetch blob data and send it to AndroidBridge using evaluateJavascript
                     String jsScript = "(async function() {" +
                             "try {" +
                             "  const response = await fetch('" + url + "');" +
@@ -139,7 +138,7 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl("file:///android_asset/index.html");
     }
 
-    // JavaScript Bridge class to handle saving base64 content to storage
+    // JavaScript Bridge class to handle saving and auto-opening files
     public static class WebAppInterface {
         Context mContext;
 
@@ -173,8 +172,20 @@ public class MainActivity extends AppCompatActivity {
                     values.put(MediaStore.Downloads.IS_PENDING, 0);
                     resolver.update(itemUri, values, null, null);
 
+                    // Auto-open the PDF immediately using an Intent
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setDataAndType(itemUri, mimeType.isEmpty() ? "application/pdf" : mimeType);
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
                     Handler handler = new Handler(Looper.getMainLooper());
-                    handler.post(() -> Toast.makeText(mContext, "PDF downloaded successfully", Toast.LENGTH_SHORT).show());
+                    handler.post(() -> {
+                        try {
+                            mContext.startActivity(intent);
+                        } catch (Exception e) {
+                            Toast.makeText(mContext, "Saved to Downloads (No PDF viewer found)", Toast.LENGTH_LONG).show();
+                        }
+                    });
                 }
             } catch (Exception e) {
                 Handler handler = new Handler(Looper.getMainLooper());
@@ -214,4 +225,4 @@ public class MainActivity extends AppCompatActivity {
             super.onBackPressed();
         }
     }
-            }
+                            }
