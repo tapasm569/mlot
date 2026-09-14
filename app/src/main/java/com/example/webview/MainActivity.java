@@ -71,9 +71,10 @@ public class MainActivity extends AppCompatActivity {
         cookieManager.setAcceptFileSchemeCookies(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
 
-        // Add JavaScript bridge including notification support
+        // Add JavaScript interface to handle blob downloads and system notifications
         webView.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
 
+        // CRITICAL: Handle UPI, WhatsApp, and Phone Call intents externally
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
@@ -90,6 +91,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // Handle file selection, uploads, and custom JS alerts (replacing "file://" title)
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
@@ -120,6 +122,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // HANDLE STANDARD, BLOB, AND DATA URL PDF DOWNLOADS
         webView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
@@ -216,9 +219,11 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // TRIGGER SYSTEM NOTIFICATION IN PANEL FROM JAVASCRIPT
         @JavascriptInterface
         public void showSystemNotification(String title, String message) {
+            Handler handler = new Handler(Looper.getMainLooper());
+            handler.post(() -> Toast.makeText(mContext, "Bridge Hit: " + title, Toast.LENGTH_SHORT).show());
+
             String channelId = "mlot_notification_channel";
             NotificationManager notificationManager = (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
 
@@ -278,4 +283,4 @@ public class MainActivity extends AppCompatActivity {
             super.onBackPressed();
         }
     }
-        }
+}
