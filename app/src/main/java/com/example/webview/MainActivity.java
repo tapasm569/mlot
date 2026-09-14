@@ -179,7 +179,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // Load the offline HTML file from the assets folder
-        webView.loadUrl("file:///android_asset/fine.html");
+        webView.loadUrl("file:///android_asset/index.html");
     }
 
     // --- FIREBASE PUSH NOTIFICATION METHODS ---
