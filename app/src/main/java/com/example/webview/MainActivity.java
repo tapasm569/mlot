@@ -1,8 +1,11 @@
 package com.example.webview;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
@@ -14,6 +17,8 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
@@ -22,17 +27,24 @@ import com.google.firebase.messaging.FirebaseMessaging;
 public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
-    private String fcmDeviceToken = null; // Stores the token locally
+    private String fcmDeviceToken = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        webView = findViewById(R.id.webView); // Make sure your activity_main.xml has a WebView with this ID
+        // REQUIRED FOR ANDROID 13+: Ask user for permission to show notifications
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, 101);
+            }
+        }
+
+        webView = findViewById(R.id.webView);
         setupWebView();
 
-        // Register the JavaScript Interface so HTML can talk to Android
+        // Register the JavaScript Interface
         webView.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
 
         // Fetch the FCM Push Notification Token
@@ -45,7 +57,7 @@ public class MainActivity extends AppCompatActivity {
     private void setupWebView() {
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
-        webSettings.setDomStorageEnabled(true); // CRITICAL: Allows localStorage to keep users logged in
+        webSettings.setDomStorageEnabled(true); // Keeps user logged in
         webSettings.setAllowFileAccess(true);
         webSettings.setAllowFileAccessFromFileURLs(true);
         webSettings.setAllowUniversalAccessFromFileURLs(true);
@@ -55,7 +67,6 @@ public class MainActivity extends AppCompatActivity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                // Intercept external links (WhatsApp, UPI, Phone Dialer)
                 if (url.startsWith("tel:") || url.startsWith("whatsapp:") || url.startsWith("upi:")) {
                     try {
                         Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
@@ -63,9 +74,9 @@ public class MainActivity extends AppCompatActivity {
                     } catch (Exception e) {
                         Toast.makeText(MainActivity.this, "App not installed to handle this action", Toast.LENGTH_SHORT).show();
                     }
-                    return true; // Tell WebView we handled it
+                    return true; 
                 }
-                return false; // Let WebView handle normal web links
+                return false; 
             }
         });
     }
@@ -77,12 +88,17 @@ public class MainActivity extends AppCompatActivity {
                 public void onComplete(@NonNull Task<String> task) {
                     if (!task.isSuccessful()) {
                         Log.w("FCM", "Fetching FCM registration token failed", task.getException());
+                        // Tell the user it failed on the phone side
+                        Toast.makeText(MainActivity.this, "Firebase Token Failed: Check internet or JSON", Toast.LENGTH_LONG).show();
                         return;
                     }
 
                     // Get new FCM registration token
                     fcmDeviceToken = task.getResult();
                     Log.d("FCM", "Device Token: " + fcmDeviceToken);
+                    
+                    // Tell the user it generated successfully
+                    Toast.makeText(MainActivity.this, "FCM Token Generated Successfully!", Toast.LENGTH_SHORT).show();
 
                     // Send the token directly to the running HTML file
                     sendTokenToWebView(fcmDeviceToken);
@@ -90,7 +106,6 @@ public class MainActivity extends AppCompatActivity {
             });
     }
 
-    // Method to inject the token into the HTML via JavaScript
     private void sendTokenToWebView(String token) {
         runOnUiThread(() -> {
             if (webView != null) {
@@ -99,8 +114,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // --- JAVASCRIPT BRIDGE ---
-    // This allows the index.html file to call Android methods
     public class WebAppInterface {
         Context mContext;
 
@@ -108,20 +121,12 @@ public class MainActivity extends AppCompatActivity {
             mContext = c;
         }
 
-        // The HTML file uses window.AndroidBridge.getFCMToken() to grab the token
         @JavascriptInterface
         public String getFCMToken() {
             return fcmDeviceToken;
         }
-
-        // Example: Optional method if you want HTML to trigger an Android Toast
-        @JavascriptInterface
-        public void showToast(String toast) {
-            Toast.makeText(mContext, toast, Toast.LENGTH_SHORT).show();
-        }
     }
 
-    // Handle back button to go back in WebView history instead of closing the app
     @Override
     public void onBackPressed() {
         if (webView.canGoBack()) {
@@ -130,4 +135,4 @@ public class MainActivity extends AppCompatActivity {
             super.onBackPressed();
         }
     }
-}
+                }
