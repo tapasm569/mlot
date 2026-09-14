@@ -2262,6 +2262,11 @@
             const { error } = await _supabase.from('pending_unsold').insert([pendingEntry]);
             if(error) alert("Error: " + error.message);
             else {
+                // Trigger Android Status Panel Notification
+                if (window.AndroidBridge && typeof window.AndroidBridge.showSystemNotification === 'function') {
+                    window.AndroidBridge.showSystemNotification("Unsold Tickets Sent", "Your unsold return has been sent to MLOT user.");
+                }
+
                 alert("Unsold tickets sent to Mlot User for verification successfully!");
                 document.getElementById('form-seller-unsold').reset();
                 document.getElementById('s-unsold-date').value = getTomorrowDateString();
@@ -2970,6 +2975,11 @@
                     mlot_id: currentMlotId
                 }]);
 
+                // Trigger Android Status Panel Notification
+                if (window.AndroidBridge && typeof window.AndroidBridge.showSystemNotification === 'function') {
+                    window.AndroidBridge.showSystemNotification("Payment Submitted", "Your payment proof has been sent for approval.");
+                }
+
                 alert("Payment & Screenshot submitted successfully! Pending approval.");
                 fileInput.value = '';
                 openSellerAccountHome();
@@ -2991,6 +3001,11 @@
                 status: 'Pending',
                 mlot_id: currentMlotId
             }]);
+
+            // Trigger Android Status Panel Notification
+            if (window.AndroidBridge && typeof window.AndroidBridge.showSystemNotification === 'function') {
+                window.AndroidBridge.showSystemNotification("Pay Later Request", "Your pay later request has been sent for verification.");
+            }
 
             alert("Pay Later request submitted successfully! Awaiting verification.");
             openSellerAccountHome();
