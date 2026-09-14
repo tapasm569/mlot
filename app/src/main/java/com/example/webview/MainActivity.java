@@ -32,9 +32,24 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setAllowContentAccess(true);
         webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
-        webView.setWebViewClient(new WebViewClient());
+        // CRITICAL: Handle UPI, WhatsApp, and Phone Call intents externally
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if (url.startsWith("upi://") || url.startsWith("tel:") || url.startsWith("whatsapp://") || url.startsWith("https://wa.me/")) {
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        startActivity(intent);
+                        return true;
+                    } catch (Exception e) {
+                        return false; // Fallback if app is not installed
+                    }
+                }
+                return false; // Load standard http/https links inside WebView
+            }
+        });
 
-        // Handle file selection and uploads (PDFs, images, etc.)
+        // Handle file selection and uploads (payment screenshots)
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
@@ -88,4 +103,4 @@ public class MainActivity extends AppCompatActivity {
             super.onBackPressed();
         }
     }
-            }
+}
