@@ -18,6 +18,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Base64;
+import android.util.Log;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
@@ -35,6 +36,9 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
+// Firebase Import for Push Notifications
+import com.google.firebase.messaging.FirebaseMessaging;
+
 import java.io.OutputStream;
 
 public class MainActivity extends AppCompatActivity {
@@ -42,6 +46,7 @@ public class MainActivity extends AppCompatActivity {
     private ValueCallback<Uri[]> filePathCallback;
     private final static int FILE_CHOOSER_RESULT_CODE = 1;
     private final static int NOTIFICATION_PERMISSION_CODE = 101;
+    private String fcmDeviceToken = null; 
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,11 +76,20 @@ public class MainActivity extends AppCompatActivity {
         cookieManager.setAcceptFileSchemeCookies(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
 
-        // Add JavaScript interface to handle blob downloads and system notifications
+        // Add JavaScript interface for file downloads and system notifications
         webView.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
 
-        // CRITICAL: Handle UPI, WhatsApp, and Phone Call intents externally
+        // Fetch FCM Token from Firebase in the background
+        fetchFCMToken();
+
         webView.setWebViewClient(new WebViewClient() {
+            // Wait for the HTML page to fully load before sending the token to JavaScript
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                sendTokenToWebView();
+            }
+
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 if (url.startsWith("upi://") || url.startsWith("tel:") || url.startsWith("whatsapp://") || url.startsWith("https://wa.me/")) {
@@ -91,8 +105,8 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Handle file selection, uploads, and custom JS alerts (replacing "file://" title)
         webView.setWebChromeClient(new WebChromeClient() {
+            // Handle file uploads (e.g., payment screenshots)
             @Override
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
                 if (MainActivity.this.filePathCallback != null) {
@@ -110,6 +124,7 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             }
 
+            // Custom UI for JavaScript alerts
             @Override
             public boolean onJsAlert(WebView view, String url, String message, final JsResult result) {
                 new AlertDialog.Builder(MainActivity.this)
@@ -122,7 +137,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // HANDLE STANDARD, BLOB, AND DATA URL PDF DOWNLOADS
+        // Handle PDF downloads (Both Blob and Standard URLs)
         webView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
@@ -163,8 +178,36 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        webView.loadUrl("file:///android_asset/index.html");
+        // Load the offline HTML file from the assets folder
+        webView.loadUrl("file:///android_asset/fine.html");
     }
+
+    // --- FIREBASE PUSH NOTIFICATION METHODS ---
+
+    private void fetchFCMToken() {
+        FirebaseMessaging.getInstance().getToken()
+            .addOnCompleteListener(task -> {
+                if (!task.isSuccessful()) {
+                    Log.w("FCM", "Fetching FCM registration token failed", task.getException());
+                    return;
+                }
+                fcmDeviceToken = task.getResult();
+                Log.d("FCM", "Token retrieved: " + fcmDeviceToken);
+                
+                sendTokenToWebView();
+            });
+    }
+
+    private void sendTokenToWebView() {
+        if (webView != null && fcmDeviceToken != null) {
+            runOnUiThread(() -> {
+                String jsCode = "javascript:if(typeof receiveFCMTokenFromAndroid === 'function') { receiveFCMTokenFromAndroid('" + fcmDeviceToken + "'); }";
+                webView.evaluateJavascript(jsCode, null);
+            });
+        }
+    }
+
+    // ------------------------------------------
 
     public static class WebAppInterface {
         Context mContext;
@@ -283,4 +326,4 @@ public class MainActivity extends AppCompatActivity {
             super.onBackPressed();
         }
     }
-}
+                    }
