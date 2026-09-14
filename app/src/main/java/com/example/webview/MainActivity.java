@@ -104,7 +104,7 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 if (url.startsWith("blob:") || url.startsWith("data:")) {
-                    // Inject JS to fetch blob data and send it to AndroidBridge
+                    // Inject JS to fetch blob data and send it to AndroidBridge using evaluateJavascript
                     String jsScript = "(async function() {" +
                             "try {" +
                             "  const response = await fetch('" + url + "');" +
@@ -116,7 +116,7 @@ public class MainActivity extends AppCompatActivity {
                             "  reader.readAsDataURL(blob);" +
                             "} catch(e) { console.error(e); }" +
                             "})();";
-                    webView.evaluateJSON(jsScript, null);
+                    webView.evaluateJavascript(jsScript, null);
                 } else {
                     try {
                         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
@@ -214,4 +214,4 @@ public class MainActivity extends AppCompatActivity {
             super.onBackPressed();
         }
     }
-                            }
+            }
