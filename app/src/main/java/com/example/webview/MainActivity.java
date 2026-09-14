@@ -2,11 +2,16 @@ package com.example.webview;
 
 import android.app.Activity;
 import android.app.DownloadManager;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -26,6 +31,9 @@ import android.webkit.WebViewClient;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 
 import java.io.OutputStream;
 
@@ -33,12 +41,20 @@ public class MainActivity extends AppCompatActivity {
     private WebView webView;
     private ValueCallback<Uri[]> filePathCallback;
     private final static int FILE_CHOOSER_RESULT_CODE = 1;
+    private final static int NOTIFICATION_PERMISSION_CODE = 101;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         setTheme(R.style.Theme_App);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        // Request notification permission for Android 13 (Tiramisu) and above
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_CODE);
+            }
+        }
 
         webView = findViewById(R.id.webview);
 
@@ -50,16 +66,14 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setAllowContentAccess(true);
         webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
-        // Enable cookies and persistent storage for permanent login
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptFileSchemeCookies(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
 
-        // Add JavaScript interface to handle blob and data URL downloads & viewing
+        // Add JavaScript bridge including notification support
         webView.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
 
-        // CRITICAL: Handle UPI, WhatsApp, and Phone Call intents externally
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
@@ -76,7 +90,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Handle file selection, uploads, and custom JS alerts (replacing "file://" title)
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
@@ -107,7 +120,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // HANDLE STANDARD, BLOB, AND DATA URL PDF DOWNLOADS
         webView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
@@ -203,6 +215,30 @@ public class MainActivity extends AppCompatActivity {
                 handler.post(() -> Toast.makeText(mContext, "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
             }
         }
+
+        // TRIGGER SYSTEM NOTIFICATION IN PANEL FROM JAVASCRIPT
+        @JavascriptInterface
+        public void showSystemNotification(String title, String message) {
+            String channelId = "mlot_notification_channel";
+            NotificationManager notificationManager = (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel channel = new NotificationChannel(channelId, "MLOT Portal Alerts", NotificationManager.IMPORTANCE_HIGH);
+                notificationManager.createNotificationChannel(channel);
+            }
+
+            Intent intent = new Intent(mContext, MainActivity.class);
+            PendingIntent pendingIntent = PendingIntent.getActivity(mContext, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(mContext, channelId)
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setContentTitle(title)
+                    .setContentText(message)
+                    .setAutoCancel(true)
+                    .setContentIntent(pendingIntent);
+
+            notificationManager.notify((int) System.currentTimeMillis(), builder.build());
+        }
     }
 
     @Override
@@ -242,4 +278,4 @@ public class MainActivity extends AppCompatActivity {
             super.onBackPressed();
         }
     }
-                                        }
+        }
