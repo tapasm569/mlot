@@ -1,6 +1,8 @@
 package com.example.webview;
 
 import android.Manifest;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -20,25 +22,26 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.firebase.FirebaseApp;
-import com.google.android.gms.tasks.OnCompleteListener;
-import com.google.android.gms.tasks.Task;
 import com.google.firebase.messaging.FirebaseMessaging;
 
 public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
     private String fcmDeviceToken = null;
+    private static final String CHANNEL_ID = "mlot_push_channel";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Explicitly initialize Firebase to prevent silent hanging
         FirebaseApp.initializeApp(this);
+        createNotificationChannel();
 
-        // REQUIRED FOR ANDROID 13+: Ask user for permission to show notifications
+        // Android 13+ Notification Runtime Permission
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, 101);
@@ -48,24 +51,36 @@ public class MainActivity extends AppCompatActivity {
         webView = findViewById(R.id.webView);
         setupWebView();
 
-        // Register the JavaScript Interface
         webView.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
 
-        // Fetch the FCM Push Notification Token
-        fetchFirebaseToken();
+        // Verify Play Services & Fetch Token
+        checkPlayServicesAndFetchToken();
 
-        // Load your local HTML file
         webView.loadUrl("file:///android_asset/index.html");
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID,
+                    "MLOT Notifications",
+                    NotificationManager.IMPORTANCE_HIGH
+            );
+            channel.setDescription("Transaction and stock alerts");
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+            }
+        }
     }
 
     private void setupWebView() {
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
-        webSettings.setDomStorageEnabled(true); // Keeps user logged in
+        webSettings.setDomStorageEnabled(true);
         webSettings.setAllowFileAccess(true);
         webSettings.setAllowFileAccessFromFileURLs(true);
         webSettings.setAllowUniversalAccessFromFileURLs(true);
-        webSettings.setMediaPlaybackRequiresUserGesture(false);
 
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
@@ -73,41 +88,50 @@ public class MainActivity extends AppCompatActivity {
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 if (url.startsWith("tel:") || url.startsWith("whatsapp:") || url.startsWith("upi:")) {
                     try {
-                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                        startActivity(intent);
+                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
                     } catch (Exception e) {
-                        Toast.makeText(MainActivity.this, "App not installed to handle this action", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "App not available for this action", Toast.LENGTH_SHORT).show();
                     }
-                    return true; 
+                    return true;
                 }
-                return false; 
+                return false;
             }
         });
     }
 
+    private void checkPlayServicesAndFetchToken() {
+        GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
+        int resultCode = apiAvailability.isGooglePlayServicesAvailable(this);
+
+        if (resultCode != ConnectionResult.SUCCESS) {
+            if (apiAvailability.isUserResolvableError(resultCode)) {
+                apiAvailability.getErrorDialog(this, resultCode, 9000).show();
+            } else {
+                Toast.makeText(this, "Device unsupported: Missing Google Play Services", Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
+
+        fetchFirebaseToken();
+    }
+
     private void fetchFirebaseToken() {
-        // Immediate popup to prove this method is running
-        Toast.makeText(this, "Requesting Firebase Token...", Toast.LENGTH_SHORT).show();
-
         FirebaseMessaging.getInstance().getToken()
-            .addOnCompleteListener(new OnCompleteListener<String>() {
-                @Override
-                public void onComplete(@NonNull Task<String> task) {
-                    if (!task.isSuccessful()) {
-                        Log.w("FCM", "Fetching FCM registration token failed", task.getException());
-                        Toast.makeText(MainActivity.this, "Firebase Token Failed: Check JSON or Network", Toast.LENGTH_LONG).show();
-                        return;
-                    }
-
-                    // Get new FCM registration token
-                    fcmDeviceToken = task.getResult();
-                    Log.d("FCM", "Device Token: " + fcmDeviceToken);
-                    
-                    Toast.makeText(MainActivity.this, "FCM Token Generated Successfully!", Toast.LENGTH_SHORT).show();
-
-                    // Send the token directly to the running HTML file
-                    sendTokenToWebView(fcmDeviceToken);
+            .addOnCompleteListener(task -> {
+                if (!task.isSuccessful()) {
+                    String err = task.getException() != null ? task.getException().getMessage() : "Unknown";
+                    Log.e("FCM", "Token retrieval failed: " + err);
+                    Toast.makeText(MainActivity.this, "FCM Error: " + err, Toast.LENGTH_LONG).show();
+                    return;
                 }
+
+                fcmDeviceToken = task.getResult();
+                Log.d("FCM", "FCM Device Token: " + fcmDeviceToken);
+                Toast.makeText(MainActivity.this, "Token Generated Successfully!", Toast.LENGTH_SHORT).show();
+                sendTokenToWebView(fcmDeviceToken);
+            })
+            .addOnFailureListener(e -> {
+                Toast.makeText(MainActivity.this, "Hard Failure: " + e.getMessage(), Toast.LENGTH_LONG).show();
             });
     }
 
@@ -140,4 +164,4 @@ public class MainActivity extends AppCompatActivity {
             super.onBackPressed();
         }
     }
-}
+                               }
