@@ -164,7 +164,7 @@
 
             <!-- ================= MLOT USER PAGES ================= -->
 
-            <!-- 1. SALE PAGE (NEW TABLE WITH CURRENT DATE FILTER, PURCHASE, SOLD, UNSOLD, TODAY'S DUE, TOTAL BALANCE) -->
+            <!-- 1. SALE PAGE -->
             <section id="page-sale" class="app-page p-4 space-y-4 hidden">
                 <div class="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden">
                     <span class="text-[10px] uppercase tracking-wider font-semibold bg-white/20 px-2 py-0.5 rounded-md">Live Report</span>
@@ -1393,7 +1393,38 @@
             return `${year}-${month}-${day}`;
         }
 
-        window.onload = function() {};
+        // ================= PERMANENT LOGIN RESTORATION =================
+        window.onload = function() {
+            const savedSession = localStorage.getItem('mlot_session');
+            if (savedSession) {
+                try {
+                    const session = JSON.parse(savedSession);
+                    currentUserRole = session.role;
+                    currentMlotId = session.mlotId;
+                    currentSellerCode = session.sellerCode;
+
+                    document.getElementById('app-header-title').innerText = session.headerTitle || 'MLOT Dashboard';
+                    document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
+                    document.getElementById('login-screen').classList.add('hidden');
+
+                    if (currentUserRole === 'seller') {
+                        document.getElementById('footer-nav').classList.add('hidden');
+                        openSellerAccountHome();
+                    } else if (currentUserRole === 'admin') {
+                        document.getElementById('footer-nav').classList.add('hidden');
+                        document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
+                        document.getElementById('page-admin-dashboard').classList.remove('hidden');
+                        openAdminSection('view-mlot');
+                    } else {
+                        document.getElementById('footer-nav').classList.remove('hidden');
+                        updatePendingUnsoldBadge();
+                        switchTab('sale');
+                    }
+                } catch (e) {
+                    localStorage.removeItem('mlot_session');
+                }
+            }
+        };
 
         function switchAuthTab(tabKey) {
             const btnLogin = document.getElementById('auth-tab-mlot-login');
@@ -1434,7 +1465,18 @@
                 currentUserRole = 'mlot';
                 currentMlotId = data.mlot_id;
                 currentSellerCode = null;
-                document.getElementById('app-header-title').innerText = `${data.business_name} (ID: ${data.mlot_id})`;
+
+                const headerTitleStr = `${data.business_name} (ID: ${data.mlot_id})`;
+                
+                // Save session permanently
+                localStorage.setItem('mlot_session', JSON.stringify({
+                    role: 'mlot',
+                    mlotId: data.mlot_id,
+                    sellerCode: null,
+                    headerTitle: headerTitleStr
+                }));
+
+                document.getElementById('app-header-title').innerText = headerTitleStr;
                 document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('footer-nav').classList.remove('hidden');
@@ -1456,7 +1498,18 @@
                 currentUserRole = 'seller';
                 currentMlotId = sellerMlotId;
                 currentSellerCode = data.code;
-                document.getElementById('app-header-title').innerText = `Seller Portal (${currentSellerCode})`;
+
+                const headerTitleStr = `Seller Portal (${currentSellerCode})`;
+
+                // Save session permanently
+                localStorage.setItem('mlot_session', JSON.stringify({
+                    role: 'seller',
+                    mlotId: sellerMlotId,
+                    sellerCode: data.code,
+                    headerTitle: headerTitleStr
+                }));
+
+                document.getElementById('app-header-title').innerText = headerTitleStr;
                 document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('footer-nav').classList.add('hidden');
@@ -1475,7 +1528,17 @@
                 if (!data) { alert("Invalid Admin Credentials!"); return; }
 
                 currentUserRole = 'admin';
-                document.getElementById('app-header-title').innerText = "Super Admin Control Center";
+                const headerTitleStr = "Super Admin Control Center";
+
+                // Save session permanently
+                localStorage.setItem('mlot_session', JSON.stringify({
+                    role: 'admin',
+                    mlotId: null,
+                    sellerCode: null,
+                    headerTitle: headerTitleStr
+                }));
+
+                document.getElementById('app-header-title').innerText = headerTitleStr;
                 document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('footer-nav').classList.add('hidden');
@@ -1487,6 +1550,7 @@
         }
 
         function logout() {
+            localStorage.removeItem('mlot_session');
             currentUserRole = 'mlot';
             currentMlotId = null;
             currentSellerCode = null;
@@ -1694,7 +1758,7 @@
             }
         }
 
-        // ================= AVAILABLE STOCK LOGIC (WITH ARROW NAVIGATION & ADVANCE STOCK) =================
+        // ================= AVAILABLE STOCK LOGIC =================
         function selectStockCategory(categoryName) {
             currentStockCategory = categoryName;
             document.querySelectorAll('.stock-cat-btn').forEach(b => {
@@ -1833,7 +1897,7 @@
             document.getElementById('seller-available-count').innerText = `${totalAvail} Available`;
         }
 
-        // ================= PURCHASE ENTRY FORM LOGIC (NON-AUTOFILL DATE & BLANK PRICE) =================
+        // ================= PURCHASE ENTRY FORM LOGIC =================
         function openPurchaseEntryPage() {
             document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
             document.getElementById('page-purchase-entry').classList.remove('hidden');
@@ -1923,7 +1987,7 @@
             }
         }
 
-        // ================= SALE ENTRY FORM LOGIC (STRICT STOCK VALIDATION & NON-AUTOFILL DATE) =================
+        // ================= SALE ENTRY FORM LOGIC =================
         function openSaleEntryPage() {
             document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
             document.getElementById('page-sale-entry').classList.remove('hidden');
@@ -2064,7 +2128,7 @@
             }
         }
 
-        // ================= UNSOLD ENTRY FORM LOGIC (MLOT USER) =================
+        // ================= UNSOLD ENTRY FORM LOGIC =================
         function openUnsoldTicketPage() {
             document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
             document.getElementById('page-unsold-ticket').classList.remove('hidden');
@@ -2146,7 +2210,7 @@
             }
         }
 
-        // ================= SELLER UNSOLD ENTRY (SELLER PORTAL) =================
+        // ================= SELLER UNSOLD ENTRY =================
         function onSellerUnsoldItemChange() {
             const item = document.getElementById('s-unsold-item').value;
             const seriesSelect = document.getElementById('s-unsold-series');
@@ -2298,7 +2362,6 @@
                 const sellerSales = (sales || []).filter(t => t.code === s.code);
                 const sellerUnsold = (unsold || []).filter(t => t.code === s.code);
 
-                // For Master page total calculation
                 let totalSaleTktQty = sellerSales.reduce((a, c) => a + c.qty, 0);
                 let totalUnsoldQty = sellerUnsold.reduce((a, c) => a + c.qty, 0);
 
@@ -2329,7 +2392,6 @@
                 }
 
                 if (saleBody) {
-                    // Strictly date-filtered for the new Sale table
                     const dateSales = sellerSales.filter(t => (t.date || getLocalDateString()) === saleDateFilter);
                     const dateUnsold = sellerUnsold.filter(t => (t.date || getLocalDateString()) === saleDateFilter);
 
@@ -2934,7 +2996,7 @@
             openSellerAccountHome();
         }
 
-        // ================= LEDGER BOOK (DATE-SPECIFIC & AUTO-CLEAR ZERO INPUTS) =================
+        // ================= LEDGER BOOK =================
         async function openLedgerBookPage() {
             document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
             document.getElementById('page-ledger-book').classList.remove('hidden');
