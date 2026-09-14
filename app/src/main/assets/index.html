@@ -1388,34 +1388,71 @@
         let activeUnsoldSetPrice = 6.50;
         let activeSellerUnsoldSetPrice = 6.50;
 
-        // --- PUSH NOTIFICATION (ANDROID WEBVIEW BRIDGE) ---
+        // --- PUSH NOTIFICATION (ANDROID WEBVIEW BRIDGE & RETRY LOGIC) ---
         let deviceFCMToken = null;
 
-        // Android app must call this JavaScript function and pass the FCM token
-        // Example from Android: webView.evaluateJavascript("receiveFCMTokenFromAndroid('token_here');", null);
-        function receiveFCMTokenFromAndroid(token) {
-            deviceFCMToken = token;
-            console.log("FCM Token received from Android app.");
-            // If user is already logged in when token arrives, update DB immediately
-            if (currentMlotId) {
-                updateTokenInDatabase();
+        // Called automatically by Android WebView onPageFinished or on token refresh
+        window.receiveFCMTokenFromAndroid = function(token) {
+            if (token && token !== "null" && token !== "undefined") {
+                deviceFCMToken = token;
+                console.log("FCM Token received via Android push callback:", token);
+                if (currentMlotId) {
+                    updateTokenInDatabase();
+                }
             }
+        };
+
+        // Fallback polling to actively grab token directly from AndroidBridge interface
+        function checkBridgeForFCMToken() {
+            if (!deviceFCMToken && window.AndroidBridge && typeof window.AndroidBridge.getFCMToken === 'function') {
+                try {
+                    const token = window.AndroidBridge.getFCMToken();
+                    if (token && token !== "null" && token !== "undefined") {
+                        deviceFCMToken = token;
+                        console.log("FCM Token retrieved via AndroidBridge interface:", token);
+                    }
+                } catch (e) {
+                    console.warn("Could not query AndroidBridge.getFCMToken:", e);
+                }
+            }
+            return deviceFCMToken;
         }
 
-        async function updateTokenInDatabase() {
-            if (!deviceFCMToken || !currentMlotId) return;
+        async function updateTokenInDatabase(retryCount = 0) {
+            checkBridgeForFCMToken();
+
+            if (!deviceFCMToken) {
+                // Retry polling up to 5 times over 7 seconds if the bridge token is delayed
+                if (retryCount < 5 && currentMlotId) {
+                    setTimeout(() => updateTokenInDatabase(retryCount + 1), 1500);
+                }
+                return;
+            }
+
+            if (!currentMlotId) return;
 
             try {
                 if (currentUserRole === 'mlot') {
-                    await _supabase.from('mlot_users').update({ fcm_token: deviceFCMToken }).eq('mlot_id', currentMlotId);
+                    const { error } = await _supabase
+                        .from('mlot_users')
+                        .update({ fcm_token: deviceFCMToken })
+                        .eq('mlot_id', currentMlotId);
+                    if (error) console.error("Error updating MLOT FCM token:", error.message);
+                    else console.log("MLOT FCM token updated successfully.");
                 } else if (currentUserRole === 'seller' && currentSellerCode) {
-                    await _supabase.from('sellers').update({ fcm_token: deviceFCMToken }).eq('mlot_id', currentMlotId).eq('code', currentSellerCode);
+                    const { error } = await _supabase
+                        .from('sellers')
+                        .update({ fcm_token: deviceFCMToken })
+                        .eq('mlot_id', currentMlotId)
+                        .eq('code', currentSellerCode);
+                    if (error) console.error("Error updating Seller FCM token:", error.message);
+                    else console.log("Seller FCM token updated successfully.");
                 }
             } catch (err) {
-                console.error("Failed to update FCM token:", err);
+                console.error("Exception syncing FCM token:", err);
             }
         }
-        // -------------------------------------------------
+        // ---------------------------------------------------------------
 
         const seriesOptionsMap = {
             "1 PM": ["M5", "M10", "M20", "M30", "M50", "M100", "M200"],
@@ -1440,7 +1477,43 @@
             return `${year}-${month}-${day}`;
         }
 
-        window.onload = function() {};
+        // --- AUTO LOGIN & INIT ---
+        window.onload = function() {
+            checkBridgeForFCMToken();
+
+            const savedRole = localStorage.getItem('currentUserRole');
+            if (savedRole) {
+                currentUserRole = savedRole;
+                currentMlotId = localStorage.getItem('currentMlotId');
+                currentSellerCode = localStorage.getItem('currentSellerCode');
+
+                document.getElementById('login-screen').classList.add('hidden');
+
+                if (savedRole === 'mlot') {
+                    const bizName = localStorage.getItem('businessName') || "MLOT User";
+                    document.getElementById('app-header-title').innerText = `${bizName} (ID: ${currentMlotId})`;
+                    document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
+                    document.getElementById('footer-nav').classList.remove('hidden');
+                    updatePendingUnsoldBadge();
+                    switchTab('sale');
+                } else if (savedRole === 'seller') {
+                    document.getElementById('app-header-title').innerText = `Seller Portal (${currentSellerCode})`;
+                    document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
+                    document.getElementById('footer-nav').classList.add('hidden');
+                    openSellerAccountHome();
+                } else if (savedRole === 'admin') {
+                    document.getElementById('app-header-title').innerText = "Super Admin Control Center";
+                    document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
+                    document.getElementById('footer-nav').classList.add('hidden');
+                    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
+                    document.getElementById('page-admin-dashboard').classList.remove('hidden');
+                    openAdminSection('view-mlot');
+                }
+                
+                // Sync push notification token for the returning user
+                updateTokenInDatabase();
+            }
+        };
 
         function switchAuthTab(tabKey) {
             const btnLogin = document.getElementById('auth-tab-mlot-login');
@@ -1481,8 +1554,13 @@
                 currentUserRole = 'mlot';
                 currentMlotId = data.mlot_id;
                 currentSellerCode = null;
+
+                // --- SAVE SESSION ---
+                localStorage.setItem('currentUserRole', 'mlot');
+                localStorage.setItem('currentMlotId', currentMlotId);
+                localStorage.setItem('businessName', data.business_name);
                 
-                updateTokenInDatabase(); // Link FCM token on login
+                updateTokenInDatabase(); // Trigger FCM update into database
 
                 document.getElementById('app-header-title').innerText = `${data.business_name} (ID: ${data.mlot_id})`;
                 document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
@@ -1506,11 +1584,16 @@
                 currentUserRole = 'seller';
                 currentMlotId = sellerMlotId;
                 currentSellerCode = data.code;
+
+                // --- SAVE SESSION ---
+                localStorage.setItem('currentUserRole', 'seller');
+                localStorage.setItem('currentMlotId', currentMlotId);
+                localStorage.setItem('currentSellerCode', currentSellerCode);
                 
                 // Prefetch pricing data on login
                 activeSellerUnsoldSetPrice = data.set_price || 6.50;
 
-                updateTokenInDatabase(); // Link FCM token on login
+                updateTokenInDatabase(); // Trigger FCM update into database
 
                 document.getElementById('app-header-title').innerText = `Seller Portal (${currentSellerCode})`;
                 document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
@@ -1531,6 +1614,10 @@
                 if (!data) { alert("Invalid Admin Credentials!"); return; }
 
                 currentUserRole = 'admin';
+
+                // --- SAVE SESSION ---
+                localStorage.setItem('currentUserRole', 'admin');
+
                 document.getElementById('app-header-title').innerText = "Super Admin Control Center";
                 document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
                 document.getElementById('login-screen').classList.add('hidden');
@@ -1543,11 +1630,25 @@
         }
 
         function logout() {
+            // --- CLEAR SAVED SESSION ---
+            localStorage.clear();
+
             currentUserRole = 'mlot';
             currentMlotId = null;
             currentSellerCode = null;
-            document.getElementById('footer-nav').classList.remove('hidden');
+            
+            // Reset UI
+            document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
+            document.getElementById('footer-nav').classList.add('hidden');
             document.getElementById('login-screen').classList.remove('hidden');
+            
+            // Clear passwords from inputs
+            document.getElementById('form-mlot-login').reset();
+            document.getElementById('form-seller-login').reset();
+            document.getElementById('form-admin-login').reset();
+            
+            // Show MLOT tab by default
+            switchAuthTab('mlot-login');
         }
 
         // ================= ADMIN PANEL =================
