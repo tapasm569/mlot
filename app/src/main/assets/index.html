@@ -141,7 +141,7 @@
                 <div class="grid grid-cols-2 gap-3">
                     <button onclick="openAdminSection('create-mlot')" class="bg-white hover:bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col items-center text-center transition-all transform active:scale-95 group">
                         <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg mb-2 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm"><i class="fa-solid fa-user-plus"></i></div>
-                        <span class="text-xs font-bold text-slate-800">Creat Mlot Party</span>
+                        <span class="text-xs font-bold text-slate-800">Create Mlot Party</span>
                     </button>
                     <button onclick="openAdminSection('view-mlot')" class="bg-white hover:bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col items-center text-center transition-all transform active:scale-95 group">
                         <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg mb-2 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm"><i class="fa-solid fa-users"></i></div>
@@ -332,7 +332,7 @@
 
                 <div class="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden">
                     <span class="text-[10px] uppercase tracking-wider font-semibold bg-white/20 px-2 py-0.5 rounded-md">New Onboarding</span>
-                    <h2 class="text-lg font-bold mt-1">Creat Seller Account</h2>
+                    <h2 class="text-lg font-bold mt-1">Create Seller Account</h2>
                 </div>
 
                 <form id="form-add-seller" onsubmit="previewSeller(event)" class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3.5">
@@ -455,11 +455,11 @@
                     <div class="grid grid-cols-2 gap-2 bg-blue-50/60 p-3 rounded-xl border border-blue-100">
                         <div>
                             <label class="block text-[11px] font-bold text-blue-900 mb-1">QTY</label>
-                            <input type="text" id="sale-qty" readonly value="5" class="w-full px-2 py-2 bg-white border border-blue-200 rounded-lg text-xs font-bold text-blue-700 text-center">
+                            <input type="text" id="sale-qty" readonly value="0" class="w-full px-2 py-2 bg-white border border-blue-200 rounded-lg text-xs font-bold text-blue-700 text-center">
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-blue-900 mb-1">PRICE</label>
-                            <input type="text" id="sale-price" readonly value="₹32.50" class="w-full px-2 py-2 bg-white border border-blue-200 rounded-lg text-xs font-extrabold text-blue-700 text-center">
+                            <input type="text" id="sale-price" readonly value="₹0.00" class="w-full px-2 py-2 bg-white border border-blue-200 rounded-lg text-xs font-extrabold text-blue-700 text-center">
                         </div>
                     </div>
 
@@ -530,7 +530,7 @@
                 <form id="form-unsold-detailed" onsubmit="submitUnsoldDetailed(event)" class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3.5">
                     <div>
                         <label class="block text-xs font-bold text-slate-700 mb-1">DATE</label>
-                        <input type="date" id="unsold-date" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <input type="date" id="unsold-date" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500">
                     </div>
 
                     <div class="grid grid-cols-2 gap-2">
@@ -574,11 +574,11 @@
                     <div class="grid grid-cols-2 gap-2 bg-amber-50/60 p-3 rounded-xl border border-amber-100">
                         <div>
                             <label class="block text-[11px] font-bold text-amber-900 mb-1">QTY</label>
-                            <input type="text" id="unsold-qty" readonly value="5" class="w-full px-2 py-2 bg-white border border-amber-200 rounded-lg text-xs font-bold text-amber-700 text-center">
+                            <input type="text" id="unsold-qty" readonly value="0" class="w-full px-2 py-2 bg-white border border-amber-200 rounded-lg text-xs font-bold text-amber-700 text-center">
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-amber-900 mb-1">AMT</label>
-                            <input type="text" id="unsold-price" readonly value="₹32.50" class="w-full px-2 py-2 bg-white border border-amber-200 rounded-lg text-xs font-extrabold text-amber-700 text-center">
+                            <input type="text" id="unsold-price" readonly value="₹0.00" class="w-full px-2 py-2 bg-white border border-amber-200 rounded-lg text-xs font-extrabold text-amber-700 text-center">
                         </div>
                     </div>
 
@@ -640,7 +640,7 @@
                     <div class="grid grid-cols-2 gap-2 bg-purple-50/60 p-3 rounded-xl border border-purple-100">
                         <div>
                             <label class="block text-[11px] font-bold text-purple-900 mb-1">QTY</label>
-                            <input type="text" id="pur-qty" readonly value="5" class="w-full px-2 py-2 bg-white border border-purple-200 rounded-lg text-xs font-bold text-purple-700 text-center">
+                            <input type="text" id="pur-qty" readonly value="0" class="w-full px-2 py-2 bg-white border border-purple-200 rounded-lg text-xs font-bold text-purple-700 text-center">
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-purple-900 mb-1">PRICE</label>
@@ -810,6 +810,19 @@
                     <h2 class="text-lg font-bold mt-1">Purchase Tickets</h2>
                 </div>
 
+                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <label class="text-xs font-bold text-slate-700">Stock Date:</label>
+                    <div class="flex items-center gap-1.5">
+                        <button onclick="changeSellerStockDate(-1)" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center text-xs shadow-xs active:scale-95" title="Previous Day">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+                        <input type="date" id="seller-stock-filter-date" onchange="renderSellerAvailableStockIndividual()" class="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-indigo-600 focus:outline-none">
+                        <button onclick="changeSellerStockDate(1)" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center text-xs shadow-xs active:scale-95" title="Next Day">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+
                 <div>
                     <label class="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Select Draw Category</label>
                     <div class="grid grid-cols-3 gap-2">
@@ -877,11 +890,11 @@
                     <div class="grid grid-cols-2 gap-2 bg-amber-50/60 p-3 rounded-xl border border-amber-100">
                         <div>
                             <label class="block text-[11px] font-bold text-amber-900 mb-1">QTY</label>
-                            <input type="text" id="s-unsold-qty" readonly value="5" class="w-full px-2 py-2 bg-white border border-amber-200 rounded-lg text-xs font-bold text-amber-700 text-center">
+                            <input type="text" id="s-unsold-qty" readonly value="0" class="w-full px-2 py-2 bg-white border border-amber-200 rounded-lg text-xs font-bold text-amber-700 text-center">
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-amber-900 mb-1">AMT</label>
-                            <input type="text" id="s-unsold-price" readonly value="₹32.50" class="w-full px-2 py-2 bg-white border border-amber-200 rounded-lg text-xs font-extrabold text-amber-700 text-center">
+                            <input type="text" id="s-unsold-price" readonly value="₹0.00" class="w-full px-2 py-2 bg-white border border-amber-200 rounded-lg text-xs font-extrabold text-amber-700 text-center">
                         </div>
                     </div>
 
@@ -1041,11 +1054,11 @@
                     </div>
 
                     <div class="space-y-2 pt-1">
-                        <button type="submit" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-bold text-xs shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 active:scale-95">
+                        <button type="submit" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 active:scale-95">
                             <i class="fa-solid fa-paper-plane text-sm"></i> Submit Payment (Send for Verification)
                         </button>
 
-                        <button type="button" onclick="submitPayLater()" class="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-bold text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 active:scale-95">
+                        <button type="button" onclick="submitPayLater()" class="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl font-bold text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 active:scale-95">
                             <i class="fa-solid fa-clock text-sm"></i> Pay Later (Verify by Mlot User)
                         </button>
                     </div>
@@ -1370,6 +1383,40 @@
         let currentlyViewingSellerCode = null;
         let isEditingSeller = false;
 
+        // Pricing variables decoupled from keystrokes to prevent database spamming
+        let activeSaleSetPrice = 6.50;
+        let activeUnsoldSetPrice = 6.50;
+        let activeSellerUnsoldSetPrice = 6.50;
+
+        // --- PUSH NOTIFICATION (ANDROID WEBVIEW BRIDGE) ---
+        let deviceFCMToken = null;
+
+        // Android app must call this JavaScript function and pass the FCM token
+        // Example from Android: webView.evaluateJavascript("receiveFCMTokenFromAndroid('token_here');", null);
+        function receiveFCMTokenFromAndroid(token) {
+            deviceFCMToken = token;
+            console.log("FCM Token received from Android app.");
+            // If user is already logged in when token arrives, update DB immediately
+            if (currentMlotId) {
+                updateTokenInDatabase();
+            }
+        }
+
+        async function updateTokenInDatabase() {
+            if (!deviceFCMToken || !currentMlotId) return;
+
+            try {
+                if (currentUserRole === 'mlot') {
+                    await _supabase.from('mlot_users').update({ fcm_token: deviceFCMToken }).eq('mlot_id', currentMlotId);
+                } else if (currentUserRole === 'seller' && currentSellerCode) {
+                    await _supabase.from('sellers').update({ fcm_token: deviceFCMToken }).eq('mlot_id', currentMlotId).eq('code', currentSellerCode);
+                }
+            } catch (err) {
+                console.error("Failed to update FCM token:", err);
+            }
+        }
+        // -------------------------------------------------
+
         const seriesOptionsMap = {
             "1 PM": ["M5", "M10", "M20", "M30", "M50", "M100", "M200"],
             "6 PM": ["D5", "D10", "D20", "D30", "D50", "D100", "D200"],
@@ -1393,38 +1440,7 @@
             return `${year}-${month}-${day}`;
         }
 
-        // ================= PERMANENT LOGIN RESTORATION =================
-        window.onload = function() {
-            const savedSession = localStorage.getItem('mlot_session');
-            if (savedSession) {
-                try {
-                    const session = JSON.parse(savedSession);
-                    currentUserRole = session.role;
-                    currentMlotId = session.mlotId;
-                    currentSellerCode = session.sellerCode;
-
-                    document.getElementById('app-header-title').innerText = session.headerTitle || 'MLOT Dashboard';
-                    document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
-                    document.getElementById('login-screen').classList.add('hidden');
-
-                    if (currentUserRole === 'seller') {
-                        document.getElementById('footer-nav').classList.add('hidden');
-                        openSellerAccountHome();
-                    } else if (currentUserRole === 'admin') {
-                        document.getElementById('footer-nav').classList.add('hidden');
-                        document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-                        document.getElementById('page-admin-dashboard').classList.remove('hidden');
-                        openAdminSection('view-mlot');
-                    } else {
-                        document.getElementById('footer-nav').classList.remove('hidden');
-                        updatePendingUnsoldBadge();
-                        switchTab('sale');
-                    }
-                } catch (e) {
-                    localStorage.removeItem('mlot_session');
-                }
-            }
-        };
+        window.onload = function() {};
 
         function switchAuthTab(tabKey) {
             const btnLogin = document.getElementById('auth-tab-mlot-login');
@@ -1465,18 +1481,10 @@
                 currentUserRole = 'mlot';
                 currentMlotId = data.mlot_id;
                 currentSellerCode = null;
-
-                const headerTitleStr = `${data.business_name} (ID: ${data.mlot_id})`;
                 
-                // Save session permanently
-                localStorage.setItem('mlot_session', JSON.stringify({
-                    role: 'mlot',
-                    mlotId: data.mlot_id,
-                    sellerCode: null,
-                    headerTitle: headerTitleStr
-                }));
+                updateTokenInDatabase(); // Link FCM token on login
 
-                document.getElementById('app-header-title').innerText = headerTitleStr;
+                document.getElementById('app-header-title').innerText = `${data.business_name} (ID: ${data.mlot_id})`;
                 document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('footer-nav').classList.remove('hidden');
@@ -1498,18 +1506,13 @@
                 currentUserRole = 'seller';
                 currentMlotId = sellerMlotId;
                 currentSellerCode = data.code;
+                
+                // Prefetch pricing data on login
+                activeSellerUnsoldSetPrice = data.set_price || 6.50;
 
-                const headerTitleStr = `Seller Portal (${currentSellerCode})`;
+                updateTokenInDatabase(); // Link FCM token on login
 
-                // Save session permanently
-                localStorage.setItem('mlot_session', JSON.stringify({
-                    role: 'seller',
-                    mlotId: sellerMlotId,
-                    sellerCode: data.code,
-                    headerTitle: headerTitleStr
-                }));
-
-                document.getElementById('app-header-title').innerText = headerTitleStr;
+                document.getElementById('app-header-title').innerText = `Seller Portal (${currentSellerCode})`;
                 document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('footer-nav').classList.add('hidden');
@@ -1528,17 +1531,7 @@
                 if (!data) { alert("Invalid Admin Credentials!"); return; }
 
                 currentUserRole = 'admin';
-                const headerTitleStr = "Super Admin Control Center";
-
-                // Save session permanently
-                localStorage.setItem('mlot_session', JSON.stringify({
-                    role: 'admin',
-                    mlotId: null,
-                    sellerCode: null,
-                    headerTitle: headerTitleStr
-                }));
-
-                document.getElementById('app-header-title').innerText = headerTitleStr;
+                document.getElementById('app-header-title').innerText = "Super Admin Control Center";
                 document.getElementById('header-logo-badge').innerHTML = `<img src="https://lh3.googleusercontent.com/d/1DGvGKfD6OBy0o1e9oJTcFbTwqOeggmy4" alt="MLOT Logo" class="w-full h-full object-cover">`;
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('footer-nav').classList.add('hidden');
@@ -1550,7 +1543,6 @@
         }
 
         function logout() {
-            localStorage.removeItem('mlot_session');
             currentUserRole = 'mlot';
             currentMlotId = null;
             currentSellerCode = null;
@@ -1565,7 +1557,7 @@
 
             if (sectionKey === 'create-mlot') {
                 container.innerHTML = `
-                    <h3 class="text-xs font-bold text-slate-800 mb-3"><i class="fa-solid fa-user-plus text-indigo-600 mr-1"></i> Creat Mlot Party</h3>
+                    <h3 class="text-xs font-bold text-slate-800 mb-3"><i class="fa-solid fa-user-plus text-indigo-600 mr-1"></i> Create Mlot Party</h3>
                     <form onsubmit="submitCreateMlotParty(event)" class="space-y-3">
                         <div><label class="block text-[10px] font-bold text-slate-600 mb-1">Mlot id</label><input type="text" id="admin-new-id" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800"></div>
                         <div><label class="block text-[10px] font-bold text-slate-600 mb-1">Name</label><input type="text" id="admin-new-name" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800"></div>
@@ -1574,7 +1566,7 @@
                             <div><label class="block text-[10px] font-bold text-slate-600 mb-1">Mobile / Pass</label><input type="tel" id="admin-new-mob" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800"></div>
                         </div>
                         <div><label class="block text-[10px] font-bold text-slate-600 mb-1">Upi id</label><input type="text" id="admin-new-upi" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800"></div>
-                        <button type="submit" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs">Creat Mlot Party</button>
+                        <button type="submit" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs">Create Mlot Party</button>
                     </form>
                 `;
             } else if (sectionKey === 'view-mlot') {
@@ -1737,10 +1729,11 @@
             document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
             if (pageKey === 'purchase') {
                 document.getElementById('page-seller-purchase').classList.remove('hidden');
+                document.getElementById('seller-stock-filter-date').value = getTomorrowDateString();
                 renderSellerAvailableStockIndividual();
             } else if (pageKey === 'unsold') {
                 document.getElementById('page-seller-unsold').classList.remove('hidden');
-                document.getElementById('s-unsold-date').value = getTomorrowDateString();
+                document.getElementById('s-unsold-date').value = getLocalDateString();
                 onSellerUnsoldItemChange();
             } else if (pageKey === 'sold') {
                 document.getElementById('page-seller-sold').classList.remove('hidden');
@@ -1792,6 +1785,19 @@
             
             dateInput.value = `${year}-${month}-${day}`;
             renderPurchaseAvailableStock();
+        }
+        
+        function changeSellerStockDate(days) {
+            const dateInput = document.getElementById('seller-stock-filter-date');
+            let currentDate = dateInput.value ? new Date(dateInput.value) : new Date();
+            currentDate.setDate(currentDate.getDate() + days);
+            
+            const year = currentDate.getFullYear();
+            const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+            const day = String(currentDate.getDate()).padStart(2, '0');
+            
+            dateInput.value = `${year}-${month}-${day}`;
+            renderSellerAvailableStockIndividual();
         }
 
         function expandRangeToIndividualTickets(rangeStr) {
@@ -1858,7 +1864,7 @@
 
         async function renderSellerAvailableStockIndividual() {
             if (!currentMlotId) return;
-            const stockDate = getTomorrowDateString();
+            const stockDate = document.getElementById('seller-stock-filter-date').value || getTomorrowDateString();
             const { data: catPurchases } = await _supabase.from('purchase_store').select('*').eq('item', currentSellerStockCategory).eq('date', stockDate).eq('mlot_id', currentMlotId);
             const { data: catSales } = await _supabase.from('sales_records').select('*').eq('item', currentSellerStockCategory).eq('date', stockDate).eq('mlot_id', currentMlotId);
             const { data: catUnsold } = await _supabase.from('unsold_records').select('*').eq('item', currentSellerStockCategory).eq('date', stockDate).eq('mlot_id', currentMlotId);
@@ -1926,8 +1932,8 @@
             const price = parseFloat(document.getElementById('pur-buying-price').value) || 0;
 
             const calc = parseRangeQuantity(series, fromStr, toStr);
-            document.getElementById('pur-qty').value = calc.qty;
-            document.getElementById('pur-total-amount').innerText = `₹${(calc.qty * price).toFixed(2)}`;
+            document.getElementById('pur-qty').value = calc.qty || 0;
+            document.getElementById('pur-total-amount').innerText = `₹${((calc.qty || 0) * price).toFixed(2)}`;
         }
 
         function addPurchaseDraft(event) {
@@ -2010,9 +2016,11 @@
         async function onSellerCodeChange() {
             const code = document.getElementById('sale-seller-code').value;
             const nameInput = document.getElementById('sale-seller-name');
-            if(!code) { nameInput.value = ""; calculateSalePrice(); return; }
-            const { data } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', code).single();
+            if(!code) { nameInput.value = ""; activeSaleSetPrice = 6.50; calculateSalePrice(); return; }
+            
+            const { data } = await _supabase.from('sellers').select('name, set_price').eq('mlot_id', currentMlotId).eq('code', code).single();
             nameInput.value = data ? data.name : "";
+            activeSaleSetPrice = (data && data.set_price) ? data.set_price : 6.50;
             calculateSalePrice();
         }
 
@@ -2026,21 +2034,14 @@
 
         function onSeriesChange() { calculateSalePrice(); }
 
-        async function calculateSalePrice() {
-            const code = document.getElementById('sale-seller-code').value;
+        function calculateSalePrice() {
             const series = document.getElementById('sale-series').value;
             const fromStr = document.getElementById('sale-from').value.trim();
             const toStr = document.getElementById('sale-to').value.trim();
 
-            let unitPrice = 6.50;
-            if (code) {
-                const { data } = await _supabase.from('sellers').select('set_price').eq('mlot_id', currentMlotId).eq('code', code).maybeSingle();
-                if (data) unitPrice = data.set_price;
-            }
-
             const calc = parseRangeQuantity(series, fromStr, toStr);
-            document.getElementById('sale-qty').value = calc.qty;
-            document.getElementById('sale-price').value = `₹${(calc.qty * unitPrice).toFixed(2)}`;
+            document.getElementById('sale-qty').value = calc.qty || 0;
+            document.getElementById('sale-price').value = `₹${((calc.qty || 0) * activeSaleSetPrice).toFixed(2)}`;
         }
 
         async function addCurrentEntryToList() {
@@ -2064,8 +2065,15 @@
             if (calc.error) { alert("Invalid range: 'To' ticket number must be greater than or equal to 'From'."); return; }
 
             let ticketRangeStr = formatTicketRangeString(group, parseInt(fromStr), calc.actualToVal);
-
             const entryIndividualTickets = expandRangeToIndividualTickets(ticketRangeStr);
+
+            // Local duplicate check before DB query
+            let draftedSet = new Set();
+            pendingBatchTickets.forEach(b => expandRangeToIndividualTickets(b.ticket_range).forEach(t => draftedSet.add(t)));
+            if (entryIndividualTickets.some(t => draftedSet.has(t))) {
+                alert("Wait! Some or all of these tickets are already in your current unsaved batch draft.");
+                return;
+            }
 
             const { data: purData } = await _supabase.from('purchase_store').select('*').eq('mlot_id', currentMlotId).eq('item', item).eq('date', date);
             const { data: salesData } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId).eq('item', item).eq('date', date);
@@ -2128,11 +2136,11 @@
             }
         }
 
-        // ================= UNSOLD ENTRY FORM LOGIC =================
+        // ================= UNSOLD ENTRY FORM LOGIC (MLOT USER) =================
         function openUnsoldTicketPage() {
             document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
             document.getElementById('page-unsold-ticket').classList.remove('hidden');
-            document.getElementById('unsold-date').value = getTomorrowDateString();
+            document.getElementById('unsold-date').value = getLocalDateString();
             updateUnsoldCodeDropdown();
             onUnsoldItemChange();
         }
@@ -2147,9 +2155,11 @@
         async function onUnsoldCodeChange() {
             const code = document.getElementById('unsold-seller-code').value;
             const nameInput = document.getElementById('unsold-seller-name');
-            if(!code) { nameInput.value = ""; calculateUnsoldPrice(); return; }
-            const { data } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', code).single();
+            if(!code) { nameInput.value = ""; activeUnsoldSetPrice = 6.50; calculateUnsoldPrice(); return; }
+            
+            const { data } = await _supabase.from('sellers').select('name, set_price').eq('mlot_id', currentMlotId).eq('code', code).single();
             nameInput.value = data ? data.name : "";
+            activeUnsoldSetPrice = (data && data.set_price) ? data.set_price : 6.50;
             calculateUnsoldPrice();
         }
 
@@ -2161,26 +2171,21 @@
             calculateUnsoldPrice();
         }
 
-        async function calculateUnsoldPrice() {
-            const code = document.getElementById('unsold-seller-code').value;
+        function calculateUnsoldPrice() {
             const series = document.getElementById('unsold-series').value;
             const fromStr = document.getElementById('unsold-from').value.trim();
             const toStr = document.getElementById('unsold-to').value.trim();
 
-            let unitPrice = 6.50;
-            if(code) {
-                const { data } = await _supabase.from('sellers').select('set_price').eq('mlot_id', currentMlotId).eq('code', code).maybeSingle();
-                if (data) unitPrice = data.set_price;
-            }
-
             const calc = parseRangeQuantity(series, fromStr, toStr);
-            document.getElementById('unsold-qty').value = calc.qty;
-            document.getElementById('unsold-price').value = `₹${(calc.qty * unitPrice).toFixed(2)}`;
+            document.getElementById('unsold-qty').value = calc.qty || 0;
+            document.getElementById('unsold-price').value = `₹${((calc.qty || 0) * activeUnsoldSetPrice).toFixed(2)}`;
         }
 
         async function submitUnsoldDetailed(event) {
             event.preventDefault();
-            const date = document.getElementById('unsold-date').value || getTomorrowDateString();
+            const date = document.getElementById('unsold-date').value;
+            if (!date) { alert("Please select a date."); return; }
+            
             const code = document.getElementById('unsold-seller-code').value;
             const name = document.getElementById('unsold-seller-name').value;
             const item = document.getElementById('unsold-item').value;
@@ -2206,11 +2211,11 @@
             else {
                 alert("Unsold return manually recorded successfully!");
                 document.getElementById('form-unsold-detailed').reset();
-                document.getElementById('unsold-date').value = getTomorrowDateString();
+                document.getElementById('unsold-date').value = getLocalDateString();
             }
         }
 
-        // ================= SELLER UNSOLD ENTRY =================
+        // ================= SELLER UNSOLD ENTRY (SELLER PORTAL) =================
         function onSellerUnsoldItemChange() {
             const item = document.getElementById('s-unsold-item').value;
             const seriesSelect = document.getElementById('s-unsold-series');
@@ -2219,25 +2224,21 @@
             calculateSellerUnsoldPrice();
         }
 
-        async function calculateSellerUnsoldPrice() {
+        function calculateSellerUnsoldPrice() {
             const series = document.getElementById('s-unsold-series').value;
             const fromStr = document.getElementById('s-unsold-from').value.trim();
             const toStr = document.getElementById('s-unsold-to').value.trim();
 
-            let unitPrice = 6.50;
-            if(currentSellerCode) {
-                const { data } = await _supabase.from('sellers').select('set_price').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).maybeSingle();
-                if (data) unitPrice = data.set_price;
-            }
-
             const calc = parseRangeQuantity(series, fromStr, toStr);
-            document.getElementById('s-unsold-qty').value = calc.qty;
-            document.getElementById('s-unsold-price').value = `₹${(calc.qty * unitPrice).toFixed(2)}`;
+            document.getElementById('s-unsold-qty').value = calc.qty || 0;
+            document.getElementById('s-unsold-price').value = `₹${((calc.qty || 0) * activeSellerUnsoldSetPrice).toFixed(2)}`;
         }
 
         async function submitSellerUnsold(event) {
             event.preventDefault();
-            const date = document.getElementById('s-unsold-date').value || getTomorrowDateString();
+            const date = document.getElementById('s-unsold-date').value;
+            if (!date) { alert("Please select a date."); return; }
+            
             const item = document.getElementById('s-unsold-item').value;
             const series = document.getElementById('s-unsold-series').value;
             const group = document.getElementById('s-unsold-group').value.trim().toUpperCase();
@@ -2262,14 +2263,9 @@
             const { error } = await _supabase.from('pending_unsold').insert([pendingEntry]);
             if(error) alert("Error: " + error.message);
             else {
-                // Trigger Android Status Panel Notification
-                if (window.AndroidBridge && typeof window.AndroidBridge.showSystemNotification === 'function') {
-                    window.AndroidBridge.showSystemNotification("Unsold Tickets Sent", "Your unsold return has been sent to MLOT user.");
-                }
-
                 alert("Unsold tickets sent to Mlot User for verification successfully!");
                 document.getElementById('form-seller-unsold').reset();
-                document.getElementById('s-unsold-date').value = getTomorrowDateString();
+                document.getElementById('s-unsold-date').value = getLocalDateString();
                 updatePendingUnsoldBadge();
                 openSellerAccountHome();
             }
@@ -2375,8 +2371,9 @@
                 const todaySales = sellerSales.filter(t => (t.date || todayStr) === todayStr);
                 const todayUnsold = sellerUnsold.filter(t => (t.date || todayStr) === todayStr);
                 let todayDue = todaySales.reduce((a, c) => a + c.price_raw, 0) - todayUnsold.reduce((a, c) => a + c.price_raw, 0);
-                if (todayDue < 0) todayDue = 0;
-                let totalBalance = Math.max(0, prevDue + todayDue - todayPay);
+                
+                // Allow negative global balances in case of overpayment/heavy returns
+                let totalBalance = prevDue + todayDue - todayPay;
 
                 if (masterList) {
                     masterList.innerHTML += `
@@ -2402,9 +2399,8 @@
 
                     let purchaseQty = dateSales.reduce((a, c) => a + c.qty, 0);
                     let unsoldQty = dateUnsold.reduce((a, c) => a + c.qty, 0);
-                    let soldQty = Math.max(0, purchaseQty - unsoldQty);
+                    let soldQty = purchaseQty - unsoldQty;
                     let dateDue = dateSales.reduce((a, c) => a + c.price_raw, 0) - dateUnsold.reduce((a, c) => a + c.price_raw, 0);
-                    if (dateDue < 0) dateDue = 0;
 
                     saleBody.innerHTML += `
                         <tr class="hover:bg-slate-50 border-b border-slate-100">
@@ -2445,8 +2441,8 @@
             const todaySales = sellerSales.filter(t => (t.date || todayStr) === todayStr);
             const todayUnsold = sellerUnsold.filter(t => (t.date || todayStr) === todayStr);
             let todayDue = todaySales.reduce((a, c) => a + c.price_raw, 0) - todayUnsold.reduce((a, c) => a + c.price_raw, 0);
-            if (todayDue < 0) todayDue = 0;
-            let totalBalance = Math.max(0, prevDue + todayDue - todayPay);
+            
+            let totalBalance = prevDue + todayDue - todayPay;
 
             const contentDiv = document.getElementById('seller-detail-content');
             const editBtn = document.getElementById('seller-detail-edit-btn');
@@ -2900,9 +2896,8 @@
             const selectedUnsold = (unsold || []).filter(t => (t.date || getLocalDateString()) === dateFilter);
 
             let dayDue = selectedSales.reduce((acc, c) => acc + c.price_raw, 0) - selectedUnsold.reduce((acc, c) => acc + c.price_raw, 0);
-            if (dayDue < 0) dayDue = 0;
-
-            let dueBalance = Math.max(0, prevDue + dayDue - dayPayment);
+            
+            let dueBalance = prevDue + dayDue - dayPayment;
 
             document.getElementById('s-ledger-prev').innerText = `₹${prevDue.toFixed(2)}`;
             document.getElementById('s-ledger-today').innerText = `₹${dayDue.toFixed(2)}`;
@@ -2926,8 +2921,8 @@
             const todaySales = (sales || []).filter(t => (t.date || todayStr) === todayStr);
             const todayUnsold = (unsold || []).filter(t => (t.date || todayStr) === todayStr);
             let todayDue = todaySales.reduce((acc, c) => acc + c.price_raw, 0) - todayUnsold.reduce((acc, c) => acc + c.price_raw, 0);
-            if (todayDue < 0) todayDue = 0;
-            let totalDue = Math.max(0, prevDue + todayDue - todayPayment);
+            
+            let totalDue = prevDue + todayDue - todayPayment;
 
             if (type === 'total') {
                 btnTotal.className = "py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-sm transition-all";
@@ -2959,32 +2954,51 @@
                 return;
             }
 
+            const file = fileInput.files[0];
             const reader = new FileReader();
-            reader.onload = async function(e) {
-                const amt = parseFloat(document.getElementById('pay-amount-display').innerText.replace('₹', '')) || 0;
-                const { data: sData } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
-                
-                await _supabase.from('payments').insert([{
-                    date: getLocalDateString(),
-                    code: currentSellerCode,
-                    name: sData ? sData.name : currentSellerCode,
-                    total_due: amt,
-                    paid_amount: amt,
-                    screenshot: e.target.result,
-                    status: 'Pending',
-                    mlot_id: currentMlotId
-                }]);
+            
+            // Compress Image Client-Side before DB upload
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = async function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 800;
+                    const MAX_HEIGHT = 800;
+                    let width = img.width;
+                    let height = img.height;
 
-                // Trigger Android Status Panel Notification
-                if (window.AndroidBridge && typeof window.AndroidBridge.showSystemNotification === 'function') {
-                    window.AndroidBridge.showSystemNotification("Payment Submitted", "Your payment proof has been sent for approval.");
-                }
+                    if (width > height) {
+                        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+                    } else {
+                        if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
 
-                alert("Payment & Screenshot submitted successfully! Pending approval.");
-                fileInput.value = '';
-                openSellerAccountHome();
+                    const amt = parseFloat(document.getElementById('pay-amount-display').innerText.replace('₹', '')) || 0;
+                    const { data: sData } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
+                    
+                    await _supabase.from('payments').insert([{
+                        date: getLocalDateString(),
+                        code: currentSellerCode,
+                        name: sData ? sData.name : currentSellerCode,
+                        total_due: amt,
+                        paid_amount: amt,
+                        screenshot: compressedBase64,
+                        status: 'Pending',
+                        mlot_id: currentMlotId
+                    }]);
+
+                    alert("Payment & Screenshot submitted successfully! Pending approval.");
+                    fileInput.value = '';
+                    openSellerAccountHome();
+                };
+                img.src = e.target.result;
             };
-            reader.readAsDataURL(fileInput.files[0]);
+            reader.readAsDataURL(file);
         }
 
         async function submitPayLater() {
@@ -3002,16 +3016,11 @@
                 mlot_id: currentMlotId
             }]);
 
-            // Trigger Android Status Panel Notification
-            if (window.AndroidBridge && typeof window.AndroidBridge.showSystemNotification === 'function') {
-                window.AndroidBridge.showSystemNotification("Pay Later Request", "Your pay later request has been sent for verification.");
-            }
-
             alert("Pay Later request submitted successfully! Awaiting verification.");
             openSellerAccountHome();
         }
 
-        // ================= LEDGER BOOK =================
+        // ================= LEDGER BOOK (DATE-SPECIFIC & AUTO-CLEAR ZERO INPUTS) =================
         async function openLedgerBookPage() {
             document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
             document.getElementById('page-ledger-book').classList.remove('hidden');
@@ -3047,9 +3056,8 @@
                 const filteredUnsold = (unsold || []).filter(t => t.code === s.code && (t.date || getLocalDateString()) === dateFilter);
 
                 let todayDue = filteredSales.reduce((a, c) => a + c.price_raw, 0) - filteredUnsold.reduce((a, c) => a + c.price_raw, 0);
-                if (todayDue < 0) todayDue = 0;
                 
-                let balance = Math.max(0, prevDue + todayDue - dayPayment);
+                let balance = prevDue + todayDue - dayPayment;
 
                 pSum += prevDue; tSum += todayDue; paySum += dayPayment; bSum += balance;
 
