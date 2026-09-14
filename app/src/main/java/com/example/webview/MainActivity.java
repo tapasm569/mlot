@@ -1,323 +1,127 @@
 package com.example.webview;
 
-import android.app.Activity;
-import android.app.DownloadManager;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.content.ContentResolver;
-import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
-import android.os.Handler;
-import android.os.Looper;
-import android.provider.MediaStore;
-import android.util.Base64;
 import android.util.Log;
-import android.webkit.CookieManager;
-import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
-import android.webkit.JsResult;
-import android.webkit.URLUtil;
-import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
-import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.app.NotificationCompat;
-import androidx.core.content.ContextCompat;
 
-// Firebase Import for Push Notifications
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
 import com.google.firebase.messaging.FirebaseMessaging;
 
-import java.io.OutputStream;
-
 public class MainActivity extends AppCompatActivity {
+
     private WebView webView;
-    private ValueCallback<Uri[]> filePathCallback;
-    private final static int FILE_CHOOSER_RESULT_CODE = 1;
-    private final static int NOTIFICATION_PERMISSION_CODE = 101;
-    private String fcmDeviceToken = null; 
+    private String fcmDeviceToken = null; // Stores the token locally
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        setTheme(R.style.Theme_App);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Request notification permission for Android 13 (Tiramisu) and above
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_CODE);
-            }
-        }
+        webView = findViewById(R.id.webView); // Make sure your activity_main.xml has a WebView with this ID
+        setupWebView();
 
-        webView = findViewById(R.id.webview);
-
-        WebSettings webSettings = webView.getSettings();
-        webSettings.setJavaScriptEnabled(true);
-        webSettings.setDomStorageEnabled(true);
-        webSettings.setDatabaseEnabled(true);
-        webSettings.setAllowFileAccess(true);
-        webSettings.setAllowContentAccess(true);
-        webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-
-        CookieManager cookieManager = CookieManager.getInstance();
-        cookieManager.setAcceptCookie(true);
-        cookieManager.setAcceptFileSchemeCookies(true);
-        cookieManager.setAcceptThirdPartyCookies(webView, true);
-
-        // Add JavaScript interface for file downloads and system notifications
+        // Register the JavaScript Interface so HTML can talk to Android
         webView.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
 
-        // Fetch FCM Token from Firebase in the background
-        fetchFCMToken();
+        // Fetch the FCM Push Notification Token
+        fetchFirebaseToken();
 
-        webView.setWebViewClient(new WebViewClient() {
-            // Wait for the HTML page to fully load before sending the token to JavaScript
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                sendTokenToWebView();
-            }
-
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                if (url.startsWith("upi://") || url.startsWith("tel:") || url.startsWith("whatsapp://") || url.startsWith("https://wa.me/")) {
-                    try {
-                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                        startActivity(intent);
-                        return true;
-                    } catch (Exception e) {
-                        return false; 
-                    }
-                }
-                return false; 
-            }
-        });
-
-        webView.setWebChromeClient(new WebChromeClient() {
-            // Handle file uploads (e.g., payment screenshots)
-            @Override
-            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
-                if (MainActivity.this.filePathCallback != null) {
-                    MainActivity.this.filePathCallback.onReceiveValue(null);
-                }
-                MainActivity.this.filePathCallback = filePathCallback;
-
-                Intent intent = fileChooserParams.createIntent();
-                try {
-                    startActivityForResult(intent, FILE_CHOOSER_RESULT_CODE);
-                } catch (Exception e) {
-                    MainActivity.this.filePathCallback = null;
-                    return false;
-                }
-                return true;
-            }
-
-            // Custom UI for JavaScript alerts
-            @Override
-            public boolean onJsAlert(WebView view, String url, String message, final JsResult result) {
-                new AlertDialog.Builder(MainActivity.this)
-                    .setTitle("MLOT Portal")
-                    .setMessage(message)
-                    .setPositiveButton(android.R.string.ok, (dialog, which) -> result.confirm())
-                    .setCancelable(false)
-                    .show();
-                return true;
-            }
-        });
-
-        // Handle PDF downloads (Both Blob and Standard URLs)
-        webView.setDownloadListener(new DownloadListener() {
-            @Override
-            public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
-                String filename = URLUtil.guessFileName(url, contentDisposition, mimeType);
-                if (filename.equals("downloadfile.bin") || filename.isEmpty()) {
-                    filename = "document_" + System.currentTimeMillis() + ".pdf";
-                }
-
-                if (url.startsWith("blob:") || url.startsWith("data:")) {
-                    String jsScript = "(async function() {" +
-                            "try {" +
-                            "  const response = await fetch('" + url + "');" +
-                            "  const blob = await response.blob();" +
-                            "  const reader = new FileReader();" +
-                            "  reader.onload = function() {" +
-                            "    AndroidBridge.saveBase64File(reader.result, '" + filename + "', blob.type || '" + mimeType + "');" +
-                            "  };" +
-                            "  reader.readAsDataURL(blob);" +
-                            "} catch(e) { console.error(e); }" +
-                            "})();";
-                    webView.evaluateJavascript(jsScript, null);
-                } else {
-                    try {
-                        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-                        request.allowScanningByMediaScanner();
-                        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
-                        
-                        DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
-                        if (dm != null) {
-                            dm.enqueue(request);
-                            Toast.makeText(getApplicationContext(), "Downloading file...", Toast.LENGTH_SHORT).show();
-                        }
-                    } catch (Exception e) {
-                        Toast.makeText(getApplicationContext(), "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    }
-                }
-            }
-        });
-
-        // Load the offline HTML file from the assets folder
+        // Load your local HTML file
         webView.loadUrl("file:///android_asset/index.html");
     }
 
-    // --- FIREBASE PUSH NOTIFICATION METHODS ---
+    private void setupWebView() {
+        WebSettings webSettings = webView.getSettings();
+        webSettings.setJavaScriptEnabled(true);
+        webSettings.setDomStorageEnabled(true); // CRITICAL: Allows localStorage to keep users logged in
+        webSettings.setAllowFileAccess(true);
+        webSettings.setAllowFileAccessFromFileURLs(true);
+        webSettings.setAllowUniversalAccessFromFileURLs(true);
+        webSettings.setMediaPlaybackRequiresUserGesture(false);
 
-    private void fetchFCMToken() {
-        FirebaseMessaging.getInstance().getToken()
-            .addOnCompleteListener(task -> {
-                if (!task.isSuccessful()) {
-                    Log.w("FCM", "Fetching FCM registration token failed", task.getException());
-                    return;
+        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                // Intercept external links (WhatsApp, UPI, Phone Dialer)
+                if (url.startsWith("tel:") || url.startsWith("whatsapp:") || url.startsWith("upi:")) {
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        startActivity(intent);
+                    } catch (Exception e) {
+                        Toast.makeText(MainActivity.this, "App not installed to handle this action", Toast.LENGTH_SHORT).show();
+                    }
+                    return true; // Tell WebView we handled it
                 }
-                fcmDeviceToken = task.getResult();
-                Log.d("FCM", "Token retrieved: " + fcmDeviceToken);
-                
-                sendTokenToWebView();
+                return false; // Let WebView handle normal web links
+            }
+        });
+    }
+
+    private void fetchFirebaseToken() {
+        FirebaseMessaging.getInstance().getToken()
+            .addOnCompleteListener(new OnCompleteListener<String>() {
+                @Override
+                public void onComplete(@NonNull Task<String> task) {
+                    if (!task.isSuccessful()) {
+                        Log.w("FCM", "Fetching FCM registration token failed", task.getException());
+                        return;
+                    }
+
+                    // Get new FCM registration token
+                    fcmDeviceToken = task.getResult();
+                    Log.d("FCM", "Device Token: " + fcmDeviceToken);
+
+                    // Send the token directly to the running HTML file
+                    sendTokenToWebView(fcmDeviceToken);
+                }
             });
     }
 
-    private void sendTokenToWebView() {
-        if (webView != null && fcmDeviceToken != null) {
-            runOnUiThread(() -> {
-                String jsCode = "javascript:if(typeof receiveFCMTokenFromAndroid === 'function') { receiveFCMTokenFromAndroid('" + fcmDeviceToken + "'); }";
-                webView.evaluateJavascript(jsCode, null);
-            });
-        }
+    // Method to inject the token into the HTML via JavaScript
+    private void sendTokenToWebView(String token) {
+        runOnUiThread(() -> {
+            if (webView != null) {
+                webView.evaluateJavascript("javascript:if(window.receiveFCMTokenFromAndroid) window.receiveFCMTokenFromAndroid('" + token + "');", null);
+            }
+        });
     }
 
-    // ------------------------------------------
-
-    public static class WebAppInterface {
+    // --- JAVASCRIPT BRIDGE ---
+    // This allows the index.html file to call Android methods
+    public class WebAppInterface {
         Context mContext;
 
         WebAppInterface(Context c) {
             mContext = c;
         }
 
+        // The HTML file uses window.AndroidBridge.getFCMToken() to grab the token
         @JavascriptInterface
-        public void saveBase64File(String base64Data, String fileName, String mimeType) {
-            try {
-                String base64Image = base64Data;
-                if (base64Data.contains(",")) {
-                    base64Image = base64Data.split(",")[1];
-                }
-                byte[] decodedBytes = Base64.decode(base64Image, Base64.DEFAULT);
-
-                ContentValues values = new ContentValues();
-                values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
-                values.put(MediaStore.Downloads.MIME_TYPE, mimeType.isEmpty() ? "application/pdf" : mimeType);
-                values.put(MediaStore.Downloads.IS_PENDING, 1);
-
-                ContentResolver resolver = mContext.getContentResolver();
-                Uri collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
-                Uri itemUri = resolver.insert(collection, values);
-
-                if (itemUri != null) {
-                    try (OutputStream out = resolver.openOutputStream(itemUri)) {
-                        out.write(decodedBytes);
-                    }
-                    values.clear();
-                    values.put(MediaStore.Downloads.IS_PENDING, 0);
-                    resolver.update(itemUri, values, null, null);
-
-                    Intent intent = new Intent(Intent.ACTION_VIEW);
-                    intent.setDataAndType(itemUri, mimeType.isEmpty() ? "application/pdf" : mimeType);
-                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-                    Handler handler = new Handler(Looper.getMainLooper());
-                    handler.post(() -> {
-                        try {
-                            mContext.startActivity(intent);
-                        } catch (Exception e) {
-                            Toast.makeText(mContext, "Saved to Downloads", Toast.LENGTH_SHORT).show();
-                        }
-                    });
-                }
-            } catch (Exception e) {
-                Handler handler = new Handler(Looper.getMainLooper());
-                handler.post(() -> Toast.makeText(mContext, "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
-            }
+        public String getFCMToken() {
+            return fcmDeviceToken;
         }
 
+        // Example: Optional method if you want HTML to trigger an Android Toast
         @JavascriptInterface
-        public void showSystemNotification(String title, String message) {
-            Handler handler = new Handler(Looper.getMainLooper());
-            handler.post(() -> Toast.makeText(mContext, "Bridge Hit: " + title, Toast.LENGTH_SHORT).show());
-
-            String channelId = "mlot_notification_channel";
-            NotificationManager notificationManager = (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                NotificationChannel channel = new NotificationChannel(channelId, "MLOT Portal Alerts", NotificationManager.IMPORTANCE_HIGH);
-                notificationManager.createNotificationChannel(channel);
-            }
-
-            Intent intent = new Intent(mContext, MainActivity.class);
-            PendingIntent pendingIntent = PendingIntent.getActivity(mContext, 0, intent, PendingIntent.FLAG_IMMUTABLE);
-
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(mContext, channelId)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentTitle(title)
-                    .setContentText(message)
-                    .setAutoCancel(true)
-                    .setContentIntent(pendingIntent);
-
-            notificationManager.notify((int) System.currentTimeMillis(), builder.build());
+        public void showToast(String toast) {
+            Toast.makeText(mContext, toast, Toast.LENGTH_SHORT).show();
         }
     }
 
-    @Override
-    protected void onPause() {
-        super.onPause();
-        CookieManager.getInstance().flush();
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
-        super.onActivityResult(requestCode, resultCode, intent);
-        if (requestCode == FILE_CHOOSER_RESULT_CODE) {
-            if (filePathCallback == null) return;
-            Uri[] results = null;
-            if (resultCode == Activity.RESULT_OK && intent != null) {
-                String dataString = intent.getDataString();
-                if (dataString != null) {
-                    results = new Uri[]{Uri.parse(dataString)};
-                } else if (intent.getClipData() != null) {
-                    int count = intent.getClipData().getItemCount();
-                    results = new Uri[count];
-                    for (int i = 0; i < count; i++) {
-                        results[i] = intent.getClipData().getItemAt(i).getUri();
-                    }
-                }
-            }
-            filePathCallback.onReceiveValue(results);
-            filePathCallback = null;
-        }
-    }
-
+    // Handle back button to go back in WebView history instead of closing the app
     @Override
     public void onBackPressed() {
         if (webView.canGoBack()) {
@@ -326,4 +130,4 @@ public class MainActivity extends AppCompatActivity {
             super.onBackPressed();
         }
     }
-                    }
+}
