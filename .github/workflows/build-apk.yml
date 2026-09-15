@@ -1,11 +1,8 @@
-name: Build Debug APK
-
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
-  workflow_dispatch:
 
 jobs:
   build:
@@ -21,8 +18,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Accept Android Licenses
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        run: yes | sdkmanager --licenses || true
 
       - name: Download and Setup Gradle 8.4
         run: |
@@ -31,9 +31,7 @@ jobs:
           echo "$PWD/gradle-8.4/bin" >> $GITHUB_PATH
 
       - name: Generate Gradle Wrapper
-        run: |
-          gradle wrapper --gradle-version 8.4
-          chmod +x gradlew
+        run: gradle wrapper --gradle-version 8.4
 
       - name: Build Debug APK with Gradle Wrapper
         run: ./gradlew assembleDebug
