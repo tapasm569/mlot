@@ -4,9 +4,8 @@
     android:layout_height="match_parent"
     android:fitsSystemWindows="true">
 
-    <!-- Changed @+id/webview to @+id/webView -->
     <WebView
-        android:id="@+id/webView"
+        android:id="@+id/webview"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
