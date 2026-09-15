@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -33,7 +34,9 @@ jobs:
           echo "$PWD/gradle-8.4/bin" >> $GITHUB_PATH
 
       - name: Generate Gradle Wrapper
-        run: gradle wrapper --gradle-version 8.4
+        run: |
+          gradle wrapper --gradle-version 8.4
+          chmod +x gradlew
 
       - name: Build Debug APK with Gradle Wrapper
         run: ./gradlew assembleDebug
