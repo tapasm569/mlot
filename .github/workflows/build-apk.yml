@@ -22,10 +22,9 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
-                    platforms;android-34
-                    build-tools;34.0.0
+
+      - name: Accept Android Licenses
+        run: yes | sdkmanager --licenses || true
 
       - name: Download and Setup Gradle 8.4
         run: |
@@ -48,3 +47,5 @@ jobs:
           name: mlotconnet-apk
           path: app/build/outputs/apk/debug/mlotconnet.apk
           
+
+UPDATE this
