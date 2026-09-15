@@ -36,8 +36,10 @@ dependencies {
     // Play Services Check (Diagnoses silent hangs)
     implementation 'com.google.android.gms:play-services-base:18.4.0'
 
-    // Firebase BOM & Services
-    implementation platform('com.google.firebase:firebase-bom:33.3.0')
+    // Firebase BoM (Updated to 34.19.0)
+    implementation platform('com.google.firebase:firebase-bom:34.19.0')
+
+    // Firebase Products (No versions specified when using the BoM)
     implementation 'com.google.firebase:firebase-messaging'
     implementation 'com.google.firebase:firebase-analytics'
 }
