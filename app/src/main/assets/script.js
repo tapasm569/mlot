@@ -1501,6 +1501,22 @@ async function enableLedgerEdit(code) {
     }
 }
 
+async function showLedgerPDF() {
+    const doc = await generateLedgerPDFObj();
+    
+    // Generate PDF as a Base64 Data URI instead of a blob URL
+    const pdfDataUri = doc.output('datauristring');
+    
+    // Open directly in the WebView / mobile browser viewer
+    const win = window.open();
+    if (win) {
+        win.document.write(`<iframe src="${pdfDataUri}" style="width:100%; height:100%; border:none;"></iframe>`);
+    } else {
+        // Fallback if popup is blocked: navigate current window or trigger data link
+        window.location.href = pdfDataUri;
+    }
+}
+
 async function generateLedgerPDFObj() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
