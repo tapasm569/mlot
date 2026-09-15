@@ -46,6 +46,4 @@ jobs:
         with:
           name: mlotconnet-apk
           path: app/build/outputs/apk/debug/mlotconnet.apk
-          
-
-UPDATE this
+     
