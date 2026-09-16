@@ -98,32 +98,34 @@ window.addEventListener('focusout', (e) => {
     }
 });
 
-// --- SMOOTH SWIPE GESTURE NAVIGATION FOR MLOT USERS ---
+// --- ROBUST TOUCH SWIPE NAVIGATION FOR ANDROID WEBVIEW ---
 let touchStartX = 0;
 let touchStartY = 0;
 
 window.addEventListener('touchstart', e => {
     if (currentUserRole !== 'mlot') return;
-    // Only block swipe if interacting with form inputs, buttons, modals, or horizontal tables
     if (e.target.closest('input, textarea, select, button, div[id$="-modal"], table, .overflow-x-auto')) return;
-    touchStartX = e.changedTouches[0].screenX;
-    touchStartY = e.changedTouches[0].screenY;
+    if (e.changedTouches && e.changedTouches.length > 0) {
+        touchStartX = e.changedTouches[0].clientX;
+        touchStartY = e.changedTouches[0].clientY;
+    }
 }, { passive: true });
 
 window.addEventListener('touchend', e => {
     if (currentUserRole !== 'mlot') return;
     if (e.target.closest('input, textarea, select, button, div[id$="-modal"], table, .overflow-x-auto')) return;
-    let touchEndX = e.changedTouches[0].screenX;
-    let touchEndY = e.changedTouches[0].screenY;
-    handleSwipeGesture(touchStartX, touchStartY, touchEndX, touchEndY);
+    if (e.changedTouches && e.changedTouches.length > 0) {
+        let touchEndX = e.changedTouches[0].clientX;
+        let touchEndY = e.changedTouches[0].clientY;
+        handleSwipeGesture(touchStartX, touchStartY, touchEndX, touchEndY);
+    }
 }, { passive: true });
 
 function handleSwipeGesture(startX, startY, endX, endY) {
     const diffX = endX - startX;
     const diffY = endY - startY;
     
-    // Threshold: Minimum 40px horizontal movement
-    if (Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY) * 1.2) {
+    if (Math.abs(diffX) > 45 && Math.abs(diffX) > Math.abs(diffY)) {
         const tabs = ['sale', 'purchase', 'master', 'account'];
         let currentTabName = 'sale';
         tabs.forEach(t => {
