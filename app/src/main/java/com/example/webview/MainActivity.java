@@ -1,4 +1,4 @@
-package com.yourpackage.app; // Change this to match your actual app package name
+package com.example.webview;
 
 import android.os.Bundle;
 import android.os.Message;
@@ -13,11 +13,11 @@ public class MainActivity extends AppCompatActivity {
     private WebView webView;
 
     @Override
-    protected void onCreate(Bundle savedInstanceState: Bundle?) {
+    protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main); // Ensure this matches your XML layout file
+        setContentView(R.layout.activity_main);
 
-        webView = findViewById(R.id.webView); // Ensure this matches your WebView ID in XML
+        webView = findViewById(R.id.webView);
 
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
@@ -25,7 +25,7 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setLoadWithOverviewMode(true);
         webSettings.setUseWideViewPort(true);
 
-        // CRUCIAL: Enable support for window.open() and popups
+        // Enable support for window.open() and popups (Required for PDF viewer)
         webSettings.setSupportMultipleWindows(true);
         webSettings.setJavaScriptCanOpenWindowsAutomatically(true);
 
@@ -41,7 +41,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Handle window.open() popup requests (used by the PDF viewer iframe in the app)
+        // Handle window.open() popup requests (used by PDF viewer iframe)
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
@@ -55,11 +55,11 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Load your local index.html file from the assets folder
+        // Load local index.html from assets
         webView.loadUrl("file:///android_asset/index.html");
     }
 
-    // Optional: Handle the device's hardware back button to navigate inside the WebView history
+    // Handle device hardware back button to navigate inside WebView history
     @Override
     public void onBackPressed() {
         if (webView != null && webView.canGoBack()) {
