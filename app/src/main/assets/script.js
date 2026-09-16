@@ -98,6 +98,50 @@ window.addEventListener('focusout', (e) => {
     }
 });
 
+// --- SWIPE GESTURE NAVIGATION FOR MLOT USERS ---
+let touchStartX = 0;
+let touchStartY = 0;
+
+window.addEventListener('touchstart', e => {
+    if (currentUserRole !== 'mlot') return;
+    if (e.target.closest('input, select, textarea, button, table, div[id$="-modal"], .absolute')) return;
+    touchStartX = e.changedTouches[0].screenX;
+    touchStartY = e.changedTouches[0].screenY;
+}, { passive: true });
+
+window.addEventListener('touchend', e => {
+    if (currentUserRole !== 'mlot') return;
+    if (e.target.closest('input, select, textarea, button, table, div[id$="-modal"], .absolute')) return;
+    let touchEndX = e.changedTouches[0].screenX;
+    let touchEndY = e.changedTouches[0].screenY;
+    handleSwipeGesture(touchStartX, touchStartY, touchEndX, touchEndY);
+}, { passive: true });
+
+function handleSwipeGesture(startX, startY, endX, endY) {
+    const diffX = endX - startX;
+    const diffY = endY - startY;
+    
+    if (Math.abs(diffX) > 60 && Math.abs(diffX) > Math.abs(diffY) * 1.5) {
+        const tabs = ['sale', 'purchase', 'master', 'account'];
+        let currentTabName = 'sale';
+        tabs.forEach(t => {
+            const pageEl = document.getElementById(`page-${t}`);
+            if (pageEl && !pageEl.classList.contains('hidden')) {
+                currentTabName = t;
+            }
+        });
+
+        const currentIndex = tabs.indexOf(currentTabName);
+        if (currentIndex === -1) return;
+
+        if (diffX < 0) {
+            if (currentIndex < tabs.length - 1) switchTab(tabs[currentIndex + 1]);
+        } else {
+            if (currentIndex > 0) switchTab(tabs[currentIndex - 1]);
+        }
+    }
+}
+
 function toggleModal(modalId, show = true) {
     const el = document.getElementById(modalId);
     if (el) el.classList.toggle('hidden', !show);
@@ -620,7 +664,7 @@ function calculatePurchaseCost() {
     document.getElementById('pur-total-amount').innerText = `₹${((calc.qty || 0) * price).toFixed(2)}`;
 }
 
-// Helper: Preprocess low-quality receipt images on canvas for superior OCR
+// Preprocess image on canvas to boost text contrast for OCR
 function preprocessImageForOCR(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -630,7 +674,6 @@ function preprocessImageForOCR(file) {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // Scale up image 2x for clearer OCR recognition
                 const scale = 2;
                 canvas.width = img.width * scale;
                 canvas.height = img.height * scale;
@@ -639,17 +682,16 @@ function preprocessImageForOCR(file) {
                 ctx.imageSmoothingQuality = 'high';
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 
-                // Enhance contrast
                 const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const data = imgData.data;
-                const contrast = 1.4; // boost contrast
+                const contrast = 1.4;
                 
                 for (let i = 0; i < data.length; i += 4) {
                     let r = data[i];
                     let g = data[i + 1];
                     let b = data[i + 2];
                     
-                    let v = 0.299 * r + 0.587 * g + 0.114 * b; // grayscale
+                    let v = 0.299 * r + 0.587 * g + 0.114 * b;
                     v = ((v - 128) * contrast) + 128;
                     v = Math.max(0, Math.min(255, v));
                     
@@ -669,7 +711,6 @@ function preprocessImageForOCR(file) {
     });
 }
 
-// --- OCR IMPORT PROCESSING FUNCTION ---
 async function processImportedTicketFile() {
     const fileInput = document.getElementById('import-file-input');
     if (!fileInput.files || fileInput.files.length === 0) {
@@ -679,7 +720,7 @@ async function processImportedTicketFile() {
 
     const file = fileInput.files[0];
     if (file.type === 'application/pdf') {
-        alert("Direct PDF OCR scanning requires image snapshots. For best results on low-quality receipts or PDF documents, please take a photo/screenshot of the receipt and upload it as an image (JPG/PNG).");
+        alert("Direct PDF OCR scanning requires image snapshots. Please take a photo or screenshot of the receipt and upload it as an image (JPG/PNG).");
         return;
     }
 

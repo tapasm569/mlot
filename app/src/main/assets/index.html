@@ -11,7 +11,7 @@
     <!-- jsPDF and AutoTable for Bordered PDF Reports -->
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.5.28/dist/jspdf.plugin.autotable.min.js"></script>
-    <!-- Tesseract.js OCR for receipt and PDF scanning -->
+    <!-- Tesseract.js OCR for receipt and image scanning -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@v5/dist/tesseract.min.js"></script>
     <!-- Supabase JS Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -633,7 +633,7 @@
                 </button>
             </section>
 
-            <!-- 9. PURCHASE ENTRY SUB-PAGE (With Import Purchase Ticket & OCR support) -->
+            <!-- 9. PURCHASE ENTRY SUB-PAGE (With Import purchase ticket & OCR scanner) -->
             <section id="page-purchase-entry" class="app-page p-4 space-y-4 hidden">
                 <div class="flex items-center justify-between">
                     <button onclick="history.back()" class="text-xs font-bold text-indigo-600 flex items-center gap-1 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs active:scale-95">
@@ -647,10 +647,10 @@
                     <h2 class="text-lg font-bold mt-1">Purchase Entry</h2>
                 </div>
 
-                <!-- IMPORT PURCHASE TICKET SECTION (OCR SCANNER) -->
+                <!-- IMPORT PURCHASE TICKET SECTION -->
                 <div class="bg-indigo-50/70 p-3.5 rounded-2xl border border-indigo-100 space-y-2.5">
                     <label class="block text-xs font-bold text-indigo-900"><i class="fa-solid fa-file-arrow-up mr-1"></i> Import purchase ticket</label>
-                    <input type="file" id="import-file-input" accept="image/*,application/pdf" class="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer bg-white border border-indigo-200 rounded-xl p-1">
+                    <input type="file" id="import-file-input" accept="image/*" class="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer bg-white border border-indigo-200 rounded-xl p-1">
                     <div class="grid grid-cols-2 gap-2 pt-1">
                         <button type="button" onclick="processImportedTicketFile()" class="py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-sm active:scale-95 flex items-center justify-center gap-1">
                             <i class="fa-solid fa-wand-magic-sparkles"></i> Import ticket
