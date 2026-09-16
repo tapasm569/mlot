@@ -17,7 +17,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Safely try to load the XML layout
         try {
             setContentView(R.layout.activity_main);
             webView = findViewById(R.id.webView);
@@ -25,7 +24,6 @@ public class MainActivity extends AppCompatActivity {
             Log.e("MainActivity", "Could not load activity_main XML: " + e.getMessage());
         }
 
-        // SAFETY FALLBACK: If XML layout failed or ID doesn't match, create WebView programmatically
         if (webView == null) {
             webView = new WebView(this);
             setContentView(webView);
@@ -38,11 +36,9 @@ public class MainActivity extends AppCompatActivity {
             webSettings.setLoadWithOverviewMode(true);
             webSettings.setUseWideViewPort(true);
 
-            // Enable support for window.open() and popups (Required for PDF viewer)
             webSettings.setSupportMultipleWindows(true);
             webSettings.setJavaScriptCanOpenWindowsAutomatically(true);
 
-            // Handle URL loading to allow Base64 Data URIs (PDFs)
             webView.setWebViewClient(new WebViewClient() {
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, String url) {
@@ -54,7 +50,6 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
 
-            // Handle window.open() popup requests (used by PDF viewer iframe)
             webView.setWebChromeClient(new WebChromeClient() {
                 @Override
                 public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
@@ -68,7 +63,6 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
 
-            // Load local index.html from assets
             webView.loadUrl("file:///android_asset/index.html");
             
         } catch (Exception e) {
@@ -76,41 +70,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // Handle device hardware back button to navigate inside WebView history
-    @Override
-    public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
-        }
-    }
-}                    view.loadUrl(url);
-                    return true;
-                }
-                return false;
-            }
-        });
-
-        // Handle window.open() popup requests (used by PDF viewer iframe)
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
-                WebView newWebView = new WebView(MainActivity.this);
-                newWebView.getSettings().setJavaScriptEnabled(true);
-                
-                WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
-                transport.setWebView(newWebView);
-                resultMsg.sendToTarget();
-                return true;
-            }
-        });
-
-        // Load local index.html from assets
-        webView.loadUrl("file:///android_asset/index.html");
-    }
-
-    // Handle device hardware back button to navigate inside WebView history
     @Override
     public void onBackPressed() {
         if (webView != null && webView.canGoBack()) {
