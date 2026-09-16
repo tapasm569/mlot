@@ -7,141 +7,68 @@ let pendingBatchTickets = [], pendingUnsoldBatch = [], pendingPurchaseDraft = []
 let tempSellerData = {}, currentStockCategory = '1 PM', currentSellerStockCategory = '1 PM';
 let currentlyViewingSellerCode = null, isEditingSeller = false;
 let activeSaleSetPrice = 6.50, activeUnsoldSetPrice = 6.50, activeSellerUnsoldSetPrice = 6.50;
-let deviceFCMToken = null;
+let deviceFCMToken = null, rememberedPurchasePrice = localStorage.getItem('lastPurchasePrice') || '';
 
-// Sticky Buying Price memory for Purchase Entry
-let rememberedPurchasePrice = localStorage.getItem('lastPurchasePrice') || '';
+// --- DOM & UTILITY HELPERS ---
+const $ = id => document.getElementById(id);
+const val = id => $(id)?.value?.trim() || '';
+const toggleModal = (modalId, show = true) => $(modalId)?.classList.toggle('hidden', !show);
+const fmtCurr = n => `₹${Number(n || 0).toFixed(2)}`;
 
-// --- DATE ADAPTERS FOR DD/MM/YYYY (16/09/2026) FORMAT ---
-function getISODateString(d = new Date()) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+// --- DATE UTILITIES (Strict DD/MM/YYYY Support) ---
+const getISODateString = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 function formatToDBDate(str) {
     if (!str) return '';
     str = String(str).trim();
-    if (str.includes('/')) return str; // Already DD/MM/YYYY format
-    if (str.includes('-')) {
-        const p = str.split('-');
-        if (p.length === 3) {
-            // If YYYY-MM-DD -> DD/MM/YYYY
-            if (p[0].length === 4) return `${p[2]}/${p[1]}/${p[0]}`;
-            // If DD-MM-YYYY -> DD/MM/YYYY
-            if (p[2].length === 4) return `${p[0]}/${p[1]}/${p[2]}`;
-        }
-    }
-    return str;
-}
-
-function formatToISODate(dbStr) {
-    if (!dbStr) return '';
-    dbStr = String(dbStr).trim();
-    if (dbStr.includes('-') && dbStr.split('-')[0].length === 4) return dbStr;
-    if (dbStr.includes('/')) {
-        const p = dbStr.split('/');
-        return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : dbStr;
-    }
-    return dbStr;
+    if (str.includes('/')) return str;
+    const p = str.split('-');
+    return p.length === 3 ? (p[0].length === 4 ? `${p[2]}/${p[1]}/${p[0]}` : `${p[0]}/${p[1]}/${p[2]}`) : str;
 }
 
 function convertDateToComparable(dateStr) {
     if (!dateStr) return '';
-    dateStr = String(dateStr).trim();
-    if (dateStr.includes('/')) {
-        const p = dateStr.split('/');
-        if (p.length === 3) return `${p[2]}${p[1].padStart(2, '0')}${p[0].padStart(2, '0')}`;
-    }
-    if (dateStr.includes('-')) {
-        const p = dateStr.split('-');
-        if (p.length === 3) {
-            if (p[0].length === 4) return `${p[0]}${p[1].padStart(2, '0')}${p[2].padStart(2, '0')}`;
-            if (p[2].length === 4) return `${p[2]}${p[1].padStart(2, '0')}${p[0].padStart(2, '0')}`;
-        }
-    }
-    return dateStr;
+    const p = String(dateStr).trim().split(/[-/]/);
+    if (p.length !== 3) return dateStr;
+    return p[0].length === 4 ? `${p[0]}${p[1].padStart(2, '0')}${p[2].padStart(2, '0')}` : `${p[2]}${p[1].padStart(2, '0')}${p[0].padStart(2, '0')}`;
 }
 
-// --- DIRECT PDF VIEWER & NATIVE ANDROID BRIDGE ---
+// --- ANDROID PDF & WHATSAPP BRIDGE ---
 function openPDFDirectly(doc, fileName = `Report_${Date.now()}.pdf`) {
-    if (!doc) {
-        alert("Error: PDF document object is empty.");
-        return;
-    }
+    if (!doc) return alert("Error: PDF document is empty.");
     try {
-        const dataUri = doc.output('datauristring');
-        const pdfBase64 = dataUri.split(',')[1];
-
-        // Direct launch in device's default viewer via AndroidBridge
-        if (window.AndroidBridge && typeof window.AndroidBridge.openPDFDirectly === 'function') {
+        const dataUri = doc.output('datauristring'), pdfBase64 = dataUri.split(',')[1];
+        if (window.AndroidBridge?.openPDFDirectly) {
             window.AndroidBridge.openPDFDirectly(pdfBase64, fileName);
         } else {
-            // Browser fallback
-            const a = document.createElement('a');
-            a.href = dataUri;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            const a = Object.assign(document.createElement('a'), { href: dataUri, download: fileName });
+            document.body.appendChild(a); a.click(); a.remove();
         }
-    } catch (err) {
-        alert("Could not open PDF: " + err.message);
-    }
+    } catch (err) { alert("Could not open PDF: " + err.message); }
 }
 
-// --- KEYBOARD & FOOTER FIX ---
-window.addEventListener('focusin', (e) => {
-    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) {
-        document.getElementById('footer-nav')?.classList.add('hidden');
-    }
-});
-window.addEventListener('focusout', (e) => {
-    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) {
-        setTimeout(() => {
-            if (!['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName) && currentUserRole === 'mlot') {
-                document.getElementById('footer-nav')?.classList.remove('hidden');
-            }
-        }, 150);
-    }
-});
+// --- KEYBOARD LISTENER ---
+window.addEventListener('focusin', e => ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) && $('footer-nav')?.classList.add('hidden'));
+window.addEventListener('focusout', e => ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) && setTimeout(() => {
+    if (!['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName) && currentUserRole === 'mlot') $('footer-nav')?.classList.remove('hidden');
+}, 150));
 
-// --- UNIVERSAL MODAL TOGGLER ---
-function toggleModal(modalId, show = true) {
-    const el = document.getElementById(modalId);
-    if (el) el.classList.toggle('hidden', !show);
-}
-
-// --- PUSH NOTIFICATION BRIDGE ---
-window.receiveFCMTokenFromAndroid = function(token) {
-    if (token && token !== "null" && token !== "undefined") {
-        deviceFCMToken = token;
-        if (currentMlotId) updateTokenInDatabase();
-    }
-};
-
+// --- FCM PUSH NOTIFICATION BRIDGE ---
+window.receiveFCMTokenFromAndroid = token => { if (token && token !== "null") { deviceFCMToken = token; if (currentMlotId) updateTokenInDatabase(); } };
 function checkBridgeForFCMToken() {
-    if (!deviceFCMToken && window.AndroidBridge && typeof window.AndroidBridge.getFCMToken === 'function') {
-        try {
-            const token = window.AndroidBridge.getFCMToken();
-            if (token && token !== "null" && token !== "undefined") deviceFCMToken = token;
-        } catch (e) { console.warn(e); }
+    if (!deviceFCMToken && window.AndroidBridge?.getFCMToken) {
+        const t = window.AndroidBridge.getFCMToken();
+        if (t && t !== "null") deviceFCMToken = t;
     }
     return deviceFCMToken;
 }
-
-async function updateTokenInDatabase(retryCount = 0) {
+async function updateTokenInDatabase(retries = 0) {
     checkBridgeForFCMToken();
-    if (!deviceFCMToken) {
-        if (retryCount < 5 && currentMlotId) setTimeout(() => updateTokenInDatabase(retryCount + 1), 1500);
-        return;
-    }
-    if (!currentMlotId) return;
-    try {
-        if (currentUserRole === 'mlot') {
-            await _supabase.from('mlot_users').update({ fcm_token: deviceFCMToken }).eq('mlot_id', currentMlotId);
-        } else if (currentUserRole === 'seller' && currentSellerCode) {
-            await _supabase.from('sellers').update({ fcm_token: deviceFCMToken }).eq('mlot_id', currentMlotId).eq('code', currentSellerCode);
-        }
-    } catch (err) { console.error(err); }
+    if (!deviceFCMToken && retries < 5 && currentMlotId) return setTimeout(() => updateTokenInDatabase(retries + 1), 1500);
+    if (!currentMlotId || !deviceFCMToken) return;
+    const table = currentUserRole === 'mlot' ? 'mlot_users' : 'sellers';
+    const match = currentUserRole === 'mlot' ? { mlot_id: currentMlotId } : { mlot_id: currentMlotId, code: currentSellerCode };
+    await _supabase.from(table).update({ fcm_token: deviceFCMToken }).match(match);
 }
 
 const seriesOptionsMap = {
@@ -150,7 +77,7 @@ const seriesOptionsMap = {
     "8 PM": ["E5", "E10", "E20", "E30", "E50", "E100", "E200"]
 };
 
-// --- AUTO LOGIN & INIT ---
+// --- AUTH & INITIALIZATION ---
 window.onload = function() {
     checkBridgeForFCMToken();
     const savedRole = localStorage.getItem('currentUserRole');
@@ -158,1666 +85,881 @@ window.onload = function() {
         currentUserRole = savedRole;
         currentMlotId = localStorage.getItem('currentMlotId');
         currentSellerCode = localStorage.getItem('currentSellerCode');
-        document.getElementById('login-screen').classList.add('hidden');
-
+        $('login-screen').classList.add('hidden');
         if (savedRole === 'mlot') {
-            const bizName = localStorage.getItem('businessName') || "MLOT User";
-            document.getElementById('app-header-title').innerText = `${bizName} (ID: ${currentMlotId})`;
-            document.getElementById('footer-nav').classList.remove('hidden');
-            updatePendingUnsoldBadge();
-            switchTab('sale', false);
+            $('app-header-title').innerText = `${localStorage.getItem('businessName') || "MLOT User"} (ID: ${currentMlotId})`;
+            $('footer-nav').classList.remove('hidden');
+            updatePendingUnsoldBadge(); switchTab('sale', false);
         } else if (savedRole === 'seller') {
-            document.getElementById('app-header-title').innerText = `Seller Portal (${currentSellerCode})`;
-            document.getElementById('footer-nav').classList.add('hidden');
-            openSellerAccountHome();
-        } else if (savedRole === 'admin') {
-            document.getElementById('app-header-title').innerText = "Super Admin Control Center";
-            document.getElementById('footer-nav').classList.add('hidden');
+            $('app-header-title').innerText = `Seller Portal (${currentSellerCode})`;
+            $('footer-nav').classList.add('hidden'); openSellerAccountHome();
+        } else {
+            $('app-header-title').innerText = "Super Admin Control Center";
+            $('footer-nav').classList.add('hidden');
             document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-            document.getElementById('page-admin-dashboard').classList.remove('hidden');
-            openAdminSection('view-mlot');
+            $('page-admin-dashboard').classList.remove('hidden'); openAdminSection('view-mlot');
         }
         updateTokenInDatabase();
     }
 };
 
-function switchAuthTab(tabKey) {
-    ['mlot-login', 'seller', 'admin'].forEach(k => {
-        document.getElementById(`form-${k === 'seller' ? 'seller-login' : k === 'mlot-login' ? 'mlot-login' : 'admin-login'}`).classList.toggle('hidden', k !== tabKey);
-    });
-    if (document.getElementById('auth-tab-mlot-login')) {
-        document.getElementById('auth-tab-mlot-login').className = `flex-1 py-2 text-xs font-semibold rounded-lg ${tabKey === 'mlot-login' ? 'bg-indigo-600 text-white shadow' : 'text-slate-300'}`;
-        document.getElementById('auth-tab-seller').className = `flex-1 py-2 text-xs font-semibold rounded-lg ${tabKey === 'seller' ? 'bg-emerald-600 text-white shadow' : 'text-slate-300'}`;
-    }
+function switchAuthTab(tab) {
+    ['mlot-login', 'seller', 'admin'].forEach(k => $(`form-${k === 'seller' ? 'seller-login' : k === 'mlot-login' ? 'mlot-login' : 'admin-login'}`).classList.toggle('hidden', k !== tab));
+    $('auth-tab-mlot-login').className = `flex-1 py-2 text-xs font-semibold rounded-lg ${tab === 'mlot-login' ? 'bg-indigo-600 text-white shadow' : 'text-slate-300'}`;
+    $('auth-tab-seller').className = `flex-1 py-2 text-xs font-semibold rounded-lg ${tab === 'seller' ? 'bg-emerald-600 text-white shadow' : 'text-slate-300'}`;
 }
 
-async function handleMlotLogin(event) {
-    event.preventDefault();
-    const mlotId = document.getElementById('mlot-id-input').value.trim();
-    const mlotPass = document.getElementById('mlot-pass-input').value.trim();
-    const { data, error } = await _supabase.from('mlot_users').select('*').eq('mlot_id', mlotId).maybeSingle();
-    if (error || !data || data.mobile !== mlotPass) { alert("Invalid Credentials!"); return; }
-    if (new Date() > new Date(data.subscription_expiry)) { alert("Subscription expired!"); return; }
-
+async function handleMlotLogin(e) {
+    e.preventDefault();
+    const id = val('mlot-id-input'), pass = val('mlot-pass-input');
+    const { data } = await _supabase.from('mlot_users').select('*').eq('mlot_id', id).maybeSingle();
+    if (!data || data.mobile !== pass) return alert("Invalid Credentials!");
+    if (new Date() > new Date(data.subscription_expiry)) return alert("Subscription expired!");
     currentUserRole = 'mlot'; currentMlotId = data.mlot_id;
-    localStorage.setItem('currentUserRole', 'mlot');
-    localStorage.setItem('currentMlotId', currentMlotId);
-    localStorage.setItem('businessName', data.business_name);
-    updateTokenInDatabase();
-
-    document.getElementById('app-header-title').innerText = `${data.business_name} (ID: ${data.mlot_id})`;
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('footer-nav').classList.remove('hidden');
-    updatePendingUnsoldBadge();
-    switchTab('sale');
+    localStorage.setItem('currentUserRole', 'mlot'); localStorage.setItem('currentMlotId', currentMlotId); localStorage.setItem('businessName', data.business_name);
+    $('app-header-title').innerText = `${data.business_name} (ID: ${data.mlot_id})`;
+    $('login-screen').classList.add('hidden'); $('footer-nav').classList.remove('hidden');
+    updatePendingUnsoldBadge(); switchTab('sale'); updateTokenInDatabase();
 }
 
-async function handleSellerLogin(event) {
-    event.preventDefault();
-    const sellerMlotId = document.getElementById('seller-mlot-id').value.trim();
-    const sellerMobile = document.getElementById('seller-mobile-input').value.trim();
-    const { data, error } = await _supabase.from('sellers').select('*').eq('mlot_id', sellerMlotId).eq('phone', sellerMobile).maybeSingle();
-    if (error || !data) { alert("Invalid Credentials!"); return; }
-
-    currentUserRole = 'seller'; currentMlotId = sellerMlotId; currentSellerCode = data.code;
-    localStorage.setItem('currentUserRole', 'seller');
-    localStorage.setItem('currentMlotId', currentMlotId);
-    localStorage.setItem('currentSellerCode', currentSellerCode);
-    activeSellerUnsoldSetPrice = data.set_price || 6.50;
-    updateTokenInDatabase();
-
-    document.getElementById('app-header-title').innerText = `Seller Portal (${currentSellerCode})`;
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('footer-nav').classList.add('hidden');
-    openSellerAccountHome();
+async function handleSellerLogin(e) {
+    e.preventDefault();
+    const id = val('seller-mlot-id'), mob = val('seller-mobile-input');
+    const { data } = await _supabase.from('sellers').select('*').eq('mlot_id', id).eq('phone', mob).maybeSingle();
+    if (!data) return alert("Invalid Credentials!");
+    currentUserRole = 'seller'; currentMlotId = id; currentSellerCode = data.code; activeSellerUnsoldSetPrice = data.set_price || 6.50;
+    localStorage.setItem('currentUserRole', 'seller'); localStorage.setItem('currentMlotId', currentMlotId); localStorage.setItem('currentSellerCode', currentSellerCode);
+    $('app-header-title').innerText = `Seller Portal (${currentSellerCode})`;
+    $('login-screen').classList.add('hidden'); $('footer-nav').classList.add('hidden');
+    openSellerAccountHome(); updateTokenInDatabase();
 }
 
-async function handleAdminLogin(event) {
-    event.preventDefault();
-    const mob = document.getElementById('admin-mob-input').value.trim();
-    const pass = document.getElementById('admin-pass-input').value.trim();
-    const { data } = await _supabase.from('admins').select('*').eq('mobile', mob).eq('password', pass).maybeSingle();
-    if (!data) { alert("Invalid Admin Credentials!"); return; }
-
-    currentUserRole = 'admin';
-    localStorage.setItem('currentUserRole', 'admin');
-    document.getElementById('app-header-title').innerText = "Super Admin Control Center";
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('footer-nav').classList.add('hidden');
+async function handleAdminLogin(e) {
+    e.preventDefault();
+    const { data } = await _supabase.from('admins').select('*').eq('mobile', val('admin-mob-input')).eq('password', val('admin-pass-input')).maybeSingle();
+    if (!data) return alert("Invalid Admin Credentials!");
+    currentUserRole = 'admin'; localStorage.setItem('currentUserRole', 'admin');
+    $('app-header-title').innerText = "Super Admin Control Center";
+    $('login-screen').classList.add('hidden'); $('footer-nav').classList.add('hidden');
     document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    document.getElementById('page-admin-dashboard').classList.remove('hidden');
-    openAdminSection('view-mlot');
+    $('page-admin-dashboard').classList.remove('hidden'); openAdminSection('view-mlot');
 }
 
 function logout() {
-    localStorage.clear();
-    currentUserRole = 'mlot'; currentMlotId = null; currentSellerCode = null;
+    localStorage.clear(); currentUserRole = 'mlot'; currentMlotId = null; currentSellerCode = null;
     document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    document.getElementById('footer-nav').classList.add('hidden');
-    document.getElementById('login-screen').classList.remove('hidden');
-    switchAuthTab('mlot-login');
+    $('footer-nav').classList.add('hidden'); $('login-screen').classList.remove('hidden'); switchAuthTab('mlot-login');
 }
 
-// ================= ADMIN PANEL =================
-async function openAdminSection(sectionKey) {
-    const container = document.getElementById('admin-subview-container');
-    container.innerHTML = '';
-    if (sectionKey === 'create-mlot') {
-        container.innerHTML = `<h3 class="text-xs font-bold text-slate-800 mb-3"><i class="fa-solid fa-user-plus text-indigo-600 mr-1"></i> Create Mlot Party</h3><form onsubmit="submitCreateMlotParty(event)" class="space-y-3"><div><label class="block text-[10px] font-bold text-slate-600 mb-1">Mlot id</label><input type="text" id="admin-new-id" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"></div><div><label class="block text-[10px] font-bold text-slate-600 mb-1">Name</label><input type="text" id="admin-new-name" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"></div><div class="grid grid-cols-2 gap-2"><div><label class="block text-[10px] font-bold text-slate-600 mb-1">Area</label><input type="text" id="admin-new-area" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"></div><div><label class="block text-[10px] font-bold text-slate-600 mb-1">Mobile</label><input type="tel" id="admin-new-mob" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"></div></div><div><label class="block text-[10px] font-bold text-slate-600 mb-1">Upi id</label><input type="text" id="admin-new-upi" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"></div><button type="submit" class="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs">Create Party</button></form>`;
-    } else if (sectionKey === 'view-mlot') {
-        const { data } = await _supabase.from('mlot_users').select('*');
-        let rows = (data || []).map(u => `<tr class="border-b border-slate-100"><td class="p-2 text-indigo-600 font-semibold">${u.mlot_id}</td><td class="p-2 font-bold">${u.business_name}</td><td class="p-2 text-[10px]">${new Date(u.created_at).toLocaleDateString()}</td><td class="p-2 text-[10px] text-emerald-600 font-bold">${new Date(u.subscription_expiry).toLocaleDateString()}</td></tr>`).join('');
-        container.innerHTML = `<h3 class="text-xs font-bold text-slate-800 mb-2">All Mlot Parties</h3><div class="overflow-x-auto max-h-[300px]"><table class="w-full text-left text-xs"><thead><tr class="bg-slate-100 text-[10px] uppercase"><th class="p-2">ID</th><th class="p-2">Name</th><th class="p-2">Created</th><th class="p-2">Expiry</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="p-4 text-center text-slate-400">None found.</td></tr>'}</tbody></table></div>`;
-    } else if (sectionKey === 'manage-subs') {
-        const { data } = await _supabase.from('mlot_users').select('*');
-        const { data: payments } = await _supabase.from('mlot_payments').select('*').eq('status', 'Pending');
-        const now = new Date();
-        let renewalRows = (data || []).filter(u => Math.ceil((new Date(u.subscription_expiry) - now) / 86400000) <= 10 && Math.ceil((new Date(u.subscription_expiry) - now) / 86400000) >= 0).map(u => `<tr class="border-b border-slate-100"><td class="p-2 font-bold">${u.business_name} (${u.mlot_id})</td><td class="p-2 text-amber-600 font-bold">Expiring soon</td><td><button onclick="renewMlot('${u.mlot_id}')" class="px-2 py-1 bg-indigo-600 text-white rounded text-[10px]">Renew</button></td></tr>`).join('');
-        let paymentRows = (payments || []).map(p => `<tr class="border-b border-slate-100"><td class="p-2 font-bold">${p.mlot_id}</td><td class="p-2 text-emerald-600">₹${p.amount}</td><td><button onclick="approveMlotPayment('${p.id}', '${p.mlot_id}')" class="px-2 py-1 bg-emerald-600 text-white rounded text-[10px]">Approve</button></td></tr>`).join('');
-        container.innerHTML = `<div class="space-y-4"><div><h3 class="text-xs font-bold mb-2">Renewals Due</h3><table class="w-full text-left text-xs"><tbody>${renewalRows || '<tr><td colspan="3" class="p-3 text-center text-slate-400">None.</td></tr>'}</tbody></table></div><div><h3 class="text-xs font-bold mb-2">Pending Payments</h3><table class="w-full text-left text-xs"><tbody>${paymentRows || '<tr><td colspan="3" class="p-3 text-center text-slate-400">None.</td></tr>'}</tbody></table></div></div>`;
-    } else if (sectionKey === 'payment-history') {
-        const { data } = await _supabase.from('mlot_users').select('*');
-        let rows = (data || []).map(u => `<tr class="border-b border-slate-100"><td class="p-2 font-bold">${u.business_name} (${u.mlot_id})</td><td class="p-2 text-emerald-600 font-bold">₹200</td><td class="p-2 text-[10px] text-slate-500">${new Date(u.created_at).toLocaleDateString()}</td></tr>`).join('');
-        container.innerHTML = `<h3 class="text-xs font-bold mb-2">Payment History</h3><div class="overflow-x-auto max-h-[300px]"><table class="w-full text-left text-xs"><thead><tr class="bg-slate-100 text-[10px] uppercase"><th class="p-2">Party</th><th class="p-2">Amt</th><th class="p-2">Date</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="p-4 text-center text-slate-400">None.</td></tr>'}</tbody></table></div>`;
-    }
-}
-
-async function submitCreateMlotParty(event) {
-    event.preventDefault();
-    const mlotId = document.getElementById('admin-new-id').value.trim();
-    const name = document.getElementById('admin-new-name').value.trim();
-    const area = document.getElementById('admin-new-area').value.trim();
-    const mob = document.getElementById('admin-new-mob').value.trim();
-    const upi = document.getElementById('admin-new-upi').value.trim();
-    const expiryDate = new Date(); expiryDate.setDate(expiryDate.getDate() + 30);
-
-    const { error } = await _supabase.from('mlot_users').insert([{ mlot_id: mlotId, business_name: name, mobile: mob, area: area, upi_id: upi, subscription_expiry: expiryDate.toISOString(), status: 'Approved' }]);
-    if (error) alert("Error: " + error.message);
-    else { alert("Party created successfully!"); openAdminSection('view-mlot'); }
-}
-
-async function renewMlot(mlotId) {
-    const { data } = await _supabase.from('mlot_users').select('subscription_expiry').eq('mlot_id', mlotId).single();
-    let baseDate = new Date(data.subscription_expiry > new Date() ? data.subscription_expiry : new Date());
-    baseDate.setDate(baseDate.getDate() + 30);
-    await _supabase.from('mlot_users').update({ subscription_expiry: baseDate.toISOString() }).eq('mlot_id', mlotId);
-    alert("Renewed for 30 days!");
-    openAdminSection('manage-subs');
-}
-
-async function approveMlotPayment(payId, mlotId) {
-    await _supabase.from('mlot_payments').update({ status: 'Approved' }).eq('id', payId);
-    await renewMlot(mlotId);
-}
-
-// ================= HISTORY-AWARE NAVIGATION & BACK GESTURE SUPPORT =================
-function switchTab(tabName, push = true) {
-    document.querySelectorAll('.app-page').forEach(page => page.classList.add('hidden'));
-    
-    let targetPageId = `page-${tabName}`;
-    if (currentUserRole === 'seller' && tabName === 'account') {
-        targetPageId = 'page-seller-account';
-    }
-    
-    const targetElement = document.getElementById(targetPageId);
-    if (targetElement) targetElement.classList.remove('hidden');
-
+// --- NAVIGATION & TABS ---
+function switchTab(tab, push = true) {
+    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
+    const target = $(currentUserRole === 'seller' && tab === 'account' ? 'page-seller-account' : `page-${tab}`);
+    if (target) target.classList.remove('hidden');
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.className = "nav-btn flex flex-col items-center justify-center w-16 py-1 text-slate-400 transition-all";
-        const span = btn.querySelector('span'); if (span) span.className = "text-[10px] font-medium";
+        btn.querySelector('span').className = "text-[10px] font-medium";
     });
-
-    const activeBtn = document.getElementById(`nav-${tabName}`);
-    if (activeBtn) {
-        activeBtn.className = tabName === 'master' ? "nav-btn flex flex-col items-center justify-center px-3 py-0.5 text-indigo-600 transition-all" : "nav-btn flex flex-col items-center justify-center w-16 py-1 text-indigo-600 transition-all";
-        activeBtn.querySelector('span').className = "text-[10px] font-bold";
+    const act = $(`nav-${tab}`);
+    if (act) {
+        act.className = `nav-btn flex flex-col items-center justify-center ${tab === 'master' ? 'px-3 py-0.5' : 'w-16 py-1'} text-indigo-600 transition-all`;
+        act.querySelector('span').className = "text-[10px] font-bold";
     }
-
-    if (push) {
-        history.pushState({ type: 'tab', name: tabName }, '', '');
-    }
-
-    if (tabName === 'purchase') {
-        const stockDateInput = document.getElementById('stock-filter-date');
-        if (!stockDateInput.value) stockDateInput.value = getISODateString();
-        renderPurchaseAvailableStock();
-    } else if (tabName === 'sale') {
-        const salePageDate = document.getElementById('sale-page-filter-date');
-        if (!salePageDate.value) salePageDate.value = getISODateString();
-        renderMasterAndSaleTables();
-    } else {
-        renderMasterAndSaleTables();
-    }
+    if (push) history.pushState({ type: 'tab', name: tab }, '', '');
+    if (tab === 'purchase') { if (!val('stock-filter-date')) $('stock-filter-date').value = getISODateString(); renderPurchaseAvailableStock(); }
+    else if (tab === 'sale') { if (!val('sale-page-filter-date')) $('sale-page-filter-date').value = getISODateString(); renderMasterAndSaleTables(); }
+    else renderMasterAndSaleTables();
 }
 
-function openSubPage(sectionId, push = true) {
+function openSubPage(id, push = true) {
     document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    const el = document.getElementById(sectionId);
-    if (el) el.classList.remove('hidden');
-    if (push) {
-        history.pushState({ type: 'subpage', name: sectionId }, '', '');
-    }
+    $(id)?.classList.remove('hidden');
+    if (push) history.pushState({ type: 'subpage', name: id }, '', '');
 }
 
-window.addEventListener('popstate', (event) => {
-    const openModals = document.querySelectorAll('.absolute.inset-0.z-50:not(.hidden), div[id$="-modal"]:not(.hidden)');
-    for (let modal of openModals) {
-        if (modal.id === 'login-screen') continue;
-        modal.classList.add('hidden');
-        event.preventDefault();
-        return;
-    }
-
-    if (event.state && event.state.type === 'tab') {
-        switchTab(event.state.name, false);
-    } else if (event.state && event.state.type === 'subpage') {
-        openSubPage(event.state.name, false);
-    } else {
-        if (currentUserRole === 'mlot') {
-            switchTab('sale', false);
-        } else if (currentUserRole === 'seller') {
-            openSellerAccountHome();
-        }
-    }
+window.addEventListener('popstate', e => {
+    const modal = document.querySelector('.absolute.inset-0.z-50:not(.hidden), div[id$="-modal"]:not(.hidden)');
+    if (modal && modal.id !== 'login-screen') return modal.classList.add('hidden');
+    if (e.state?.type === 'tab') switchTab(e.state.name, false);
+    else if (e.state?.type === 'subpage') openSubPage(e.state.name, false);
+    else currentUserRole === 'mlot' ? switchTab('sale', false) : openSellerAccountHome();
 });
 
-// ================= UTILITIES & RANGE PARSING =================
+// --- RANGE PARSING & EXPANSION ---
 function parseRangeQuantity(series, fromStr, toStr) {
-    const match = series ? series.match(/\d+/) : null;
-    const mult = match ? parseInt(match[0]) : 1;
-    const fromVal = parseInt(fromStr);
+    const mult = parseInt(series?.match(/\d+/)?.[0] || 1), fromVal = parseInt(fromStr);
     let toVal = parseInt(toStr);
-    let rangeCount = 1;
-
     if (!isNaN(fromVal)) {
-        let actualToVal = fromVal;
-        if (!isNaN(toVal)) {
-            actualToVal = (toVal < fromVal && toStr.length < fromStr.length) ? parseInt(fromStr.substring(0, fromStr.length - toStr.length) + toStr) : toVal;
-        }
-        if (actualToVal >= fromVal) rangeCount = (actualToVal - fromVal) + 1;
-        else return { qty: 0, mult, actualToVal: fromVal, error: true };
-        return { qty: mult * rangeCount, mult, actualToVal, error: false };
+        let actTo = isNaN(toVal) ? fromVal : (toVal < fromVal && toStr.length < fromStr.length ? parseInt(fromStr.slice(0, -toStr.length) + toStr) : toVal);
+        return actTo >= fromVal ? { qty: mult * (actTo - fromVal + 1), mult, actualToVal: actTo, error: false } : { qty: 0, mult, actualToVal: fromVal, error: true };
     }
     return { qty: 0, mult, actualToVal: 0, error: true };
 }
 
-function formatTicketRangeString(group, fromVal, actualToVal) {
-    return (isNaN(actualToVal) || fromVal === actualToVal) ? `${group} ${fromVal}` : `${group} ${fromVal}-${actualToVal}`;
-}
+const formatTicketRangeString = (grp, fromVal, actTo) => isNaN(actTo) || fromVal === actTo ? `${grp} ${fromVal}` : `${grp} ${fromVal}-${actTo}`;
 
 function expandRangeToIndividualTickets(rangeStr) {
-    let parts = rangeStr.trim().split(/\s+/);
+    const parts = (rangeStr || '').trim().split(/\s+/);
     if (parts.length < 2) return [];
-    let group = parts[0];
-    let nums = parts[1].split('-');
-    let start = parseInt(nums[0]);
+    const nums = parts[1].split('-'), start = parseInt(nums[0]);
     let end = nums.length > 1 ? parseInt(nums[1]) : start;
-    if (nums.length > 1 && nums[1].length < nums[0].length) {
-        end = parseInt(nums[0].substring(0, nums[0].length - nums[1].length) + nums[1]);
-    }
-    let list = [];
-    for (let i = start; i <= end; i++) list.push(`${group} ${i}`);
-    return list;
+    if (nums.length > 1 && nums[1].length < nums[0].length) end = parseInt(nums[0].slice(0, -nums[1].length) + nums[1]);
+    return Array.from({ length: end - start + 1 }, (_, i) => `${parts[0]} ${start + i}`);
 }
 
-// ================= SELLER PORTAL =================
-function openSellerAccountHome() {
-    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    document.getElementById('page-seller-account').classList.remove('hidden');
-    loadSellerProfileName();
+// --- SHARED DROPDOWN & SERIES HELPERS ---
+async function fillSellerDropdowns(...ids) {
+    const { data } = await _supabase.from('sellers').select('code').eq('mlot_id', currentMlotId);
+    ids.forEach(id => {
+        const el = $(id);
+        if (el) el.innerHTML = '<option value="">Select Code</option>' + (data || []).map(s => `<option value="${s.code}">${s.code}</option>`).join('');
+    });
 }
+const updateSellerCodeDropdown = () => fillSellerDropdowns('sale-seller-code');
+const updateUnsoldCodeDropdown = () => fillSellerDropdowns('unsold-seller-code');
+const updateQuickUnsoldCodeDropdown = () => fillSellerDropdowns('unsold-q-seller-code');
 
-async function loadSellerProfileName() {
-    const { data } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
-    document.getElementById('seller-portal-banner-name').innerText = `Welcome, ${data ? data.name : "Seller"} (${currentSellerCode})`;
+function setSeriesOptions(itemSelId, seriesSelId, calcFn) {
+    const el = $(seriesSelId);
+    el.innerHTML = (seriesOptionsMap[val(itemSelId)] || []).map(s => `<option value="${s}">${s}</option>`).join('');
+    if (calcFn) calcFn();
 }
+const onPurchaseItemChange = () => setSeriesOptions('pur-item', 'pur-series', calculatePurchaseCost);
+const onItemChange = () => setSeriesOptions('sale-item', 'sale-series', calculateSalePrice);
+const onUnsoldItemChange = () => setSeriesOptions('unsold-item', 'unsold-series', calculateUnsoldPrice);
+const onSellerUnsoldItemChange = () => setSeriesOptions('s-unsold-item', 's-unsold-series', calculateSellerUnsoldPrice);
 
-function openSellerPage(pageKey) {
-    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    if (pageKey === 'purchase') {
-        openSubPage('page-seller-purchase');
-        document.getElementById('seller-stock-filter-date').value = getISODateString();
-        renderSellerAvailableStockIndividual();
-    } else if (pageKey === 'unsold') {
-        openSubPage('page-seller-unsold');
-        document.getElementById('s-unsold-date').value = getISODateString();
-        document.getElementById('s-unsold-q-date').value = getISODateString();
-        switchSellerUnsoldMode('detailed');
-    } else if (pageKey === 'sold') {
-        openSubPage('page-seller-sold');
-        renderSellerSoldTable();
-    } else if (pageKey === 'history') {
-        openSubPage('page-seller-history');
-        renderSellerPaymentHistory();
-    } else if (pageKey === 'ledger') {
-        openSubPage('page-seller-ledger');
-        document.getElementById('seller-ledger-filter-date').value = getISODateString();
-        renderSellerLedger();
-    } else if (pageKey === 'payment') {
-        openSubPage('page-seller-payment');
-        selectPayType('total');
-    }
+async function setSellerNameField(code, nameInputId, priceCallback) {
+    if (!code) { $(nameInputId).value = ""; return priceCallback?.(6.50); }
+    const { data } = await _supabase.from('sellers').select('name, set_price').eq('mlot_id', currentMlotId).eq('code', code).single();
+    $(nameInputId).value = data?.name || "";
+    priceCallback?.(data?.set_price || 6.50);
 }
+const onSellerCodeChange = () => setSellerNameField(val('sale-seller-code'), 'sale-seller-name', p => { activeSaleSetPrice = p; calculateSalePrice(); });
+const onUnsoldCodeChange = () => setSellerNameField(val('unsold-seller-code'), 'unsold-seller-name', p => { activeUnsoldSetPrice = p; calculateUnsoldPrice(); });
+const onQuickSellerCodeChange = () => setSellerNameField(val('unsold-q-seller-code'), 'unsold-q-seller-name');
 
-// ================= STOCK & INVENTORY VIEWS =================
-function selectStockCategory(cat) {
-    currentStockCategory = cat;
+// --- STOCK & INVENTORY VIEWS ---
+function updateCategoryUI(prefix, cat, titleId, renderFn) {
     ['1pm', '6pm', '8pm'].forEach(c => {
-        const btn = document.getElementById(`cat-${c}`);
-        if (btn) btn.className = `stock-cat-btn py-3 px-2 ${cat.toLowerCase().includes(c) ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-700 border border-slate-200'}`;
+        const btn = $(`${prefix}-${c}`);
+        if (btn) btn.className = `${prefix === 's-cat' ? 's-stock-cat-btn py-2.5' : 'stock-cat-btn py-3'} px-2 ${cat.toLowerCase().includes(c) ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-700 border border-slate-200'} rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 active:scale-95`;
     });
-    document.getElementById('active-category-title').innerText = `${cat} Stock Pool`;
-    renderPurchaseAvailableStock();
+    $(titleId).innerText = `${cat} Stock Pool`;
+    renderFn();
 }
+const selectStockCategory = cat => { currentStockCategory = cat; updateCategoryUI('cat', cat, 'active-category-title', renderPurchaseAvailableStock); };
+const selectSellerStockCategory = cat => { currentSellerStockCategory = cat; updateCategoryUI('s-cat', cat, 'seller-stock-category-title', renderSellerAvailableStockIndividual); };
 
-function selectSellerStockCategory(cat) {
-    currentSellerStockCategory = cat;
-    ['1pm', '6pm', '8pm'].forEach(c => {
-        const btn = document.getElementById(`s-cat-${c}`);
-        if (btn) btn.className = `s-stock-cat-btn py-2.5 px-2 ${cat.toLowerCase().includes(c) ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-700 border border-slate-200'}`;
-    });
-    document.getElementById('seller-stock-category-title').innerText = `${cat} Stock Pool`;
-    renderSellerAvailableStockIndividual();
+function changeDateByOffset(inputId, days, callback) {
+    const input = $(inputId), d = input.value ? new Date(input.value) : new Date();
+    d.setDate(d.getDate() + days); input.value = getISODateString(d); callback();
 }
+const changeStockDate = d => changeDateByOffset('stock-filter-date', d, renderPurchaseAvailableStock);
+const changeSellerStockDate = d => changeDateByOffset('seller-stock-filter-date', d, renderSellerAvailableStockIndividual);
 
-function changeStockDate(days) {
-    const input = document.getElementById('stock-filter-date');
-    let d = input.value ? new Date(input.value) : new Date();
-    d.setDate(d.getDate() + days);
-    input.value = getISODateString(d);
-    renderPurchaseAvailableStock();
-}
-
-function changeSellerStockDate(days) {
-    const input = document.getElementById('seller-stock-filter-date');
-    let d = input.value ? new Date(input.value) : new Date();
-    d.setDate(d.getDate() + days);
-    input.value = getISODateString(d);
-    renderSellerAvailableStockIndividual();
-}
-
-async function renderPurchaseAvailableStock() {
+async function fetchAndRenderStockPool(cat, dateInputId, containerId, badgeId) {
     if (!currentMlotId) return;
-    const stockDate = formatToDBDate(document.getElementById('stock-filter-date').value || getISODateString());
-    const { data: pData } = await _supabase.from('purchase_store').select('*').eq('item', currentStockCategory).eq('date', stockDate).eq('mlot_id', currentMlotId);
-    const { data: sData } = await _supabase.from('sales_records').select('*').eq('item', currentStockCategory).eq('date', stockDate).eq('mlot_id', currentMlotId);
-    const { data: uData } = await _supabase.from('unsold_records').select('*').eq('item', currentStockCategory).eq('date', stockDate).eq('mlot_id', currentMlotId);
+    const date = formatToDBDate(val(dateInputId) || getISODateString());
+    const [p, s, u] = await Promise.all(['purchase_store', 'sales_records', 'unsold_records'].map(tbl => _supabase.from(tbl).select('*').eq('item', cat).eq('date', date).eq('mlot_id', currentMlotId)));
+    const soldSet = new Set();
+    (s.data || []).forEach(row => expandRangeToIndividualTickets(row.ticket_range).forEach(t => soldSet.add(t)));
+    (u.data || []).forEach(row => expandRangeToIndividualTickets(row.ticket_range).forEach(t => soldSet.delete(t)));
 
-    const container = document.getElementById('purchase-available-series-container');
-    container.innerHTML = '';
-    let soldSet = new Set();
-    (sData || []).forEach(s => expandRangeToIndividualTickets(s.ticket_range).forEach(t => soldSet.add(t)));
-    (uData || []).forEach(u => expandRangeToIndividualTickets(u.ticket_range).forEach(t => soldSet.delete(t)));
-
-    let seriesMap = {};
-    (pData || []).forEach(p => {
-        let sKey = p.series || "General";
-        if (!seriesMap[sKey]) seriesMap[sKey] = [];
-        expandRangeToIndividualTickets(p.ticket_range).forEach(t => { if (!soldSet.has(t)) seriesMap[sKey].push(t); });
+    const seriesMap = {};
+    (p.data || []).forEach(row => {
+        const sKey = row.series || "General";
+        seriesMap[sKey] = seriesMap[sKey] || [];
+        expandRangeToIndividualTickets(row.ticket_range).forEach(t => !soldSet.has(t) && seriesMap[sKey].push(t));
     });
 
-    let totalAvail = 0, keys = Object.keys(seriesMap);
-    if (keys.length === 0 || keys.every(k => seriesMap[k].length === 0)) {
-        container.innerHTML = `<div class="p-4 bg-slate-50 text-center text-xs text-slate-400">No available stock.</div>`;
-        document.getElementById('available-total-badge').innerText = `0 Available`;
-        return;
-    }
-
-    keys.forEach(series => {
-        let tickets = seriesMap[series];
-        if (tickets.length === 0) return;
-        totalAvail += tickets.length;
-        let badges = tickets.map(t => `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-mono px-2 py-0.5 rounded-md inline-block m-0.5">${t}</span>`).join('');
-        container.innerHTML += `<div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2"><div class="flex justify-between items-center border-b border-slate-200 pb-1.5"><span class="text-xs font-bold text-slate-800">Series: ${series}</span><span class="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">${tickets.length} Left</span></div><div class="flex flex-wrap max-h-[140px] overflow-y-auto">${badges}</div></div>`;
-    });
-    document.getElementById('available-total-badge').innerText = `${totalAvail} Available`;
-}
-
-async function renderSellerAvailableStockIndividual() {
-    if (!currentMlotId) return;
-    const stockDate = formatToDBDate(document.getElementById('seller-stock-filter-date').value || getISODateString());
-    const { data: pData } = await _supabase.from('purchase_store').select('*').eq('item', currentSellerStockCategory).eq('date', stockDate).eq('mlot_id', currentMlotId);
-    const { data: sData } = await _supabase.from('sales_records').select('*').eq('item', currentSellerStockCategory).eq('date', stockDate).eq('mlot_id', currentMlotId);
-    const { data: uData } = await _supabase.from('unsold_records').select('*').eq('item', currentSellerStockCategory).eq('date', stockDate).eq('mlot_id', currentMlotId);
-
-    const container = document.getElementById('seller-purchase-indv-container');
-    container.innerHTML = '';
-    let soldSet = new Set();
-    (sData || []).forEach(s => expandRangeToIndividualTickets(s.ticket_range).forEach(t => soldSet.add(t)));
-    (uData || []).forEach(u => expandRangeToIndividualTickets(u.ticket_range).forEach(t => soldSet.delete(t)));
-
-    let seriesMap = {};
-    (pData || []).forEach(p => {
-        let sKey = p.series || "General";
-        if (!seriesMap[sKey]) seriesMap[sKey] = [];
-        expandRangeToIndividualTickets(p.ticket_range).forEach(t => { if (!soldSet.has(t)) seriesMap[sKey].push(t); });
-    });
-
-    let totalAvail = 0, keys = Object.keys(seriesMap);
-    if (keys.length === 0 || keys.every(k => seriesMap[k].length === 0)) {
+    const container = $(containerId), keys = Object.keys(seriesMap).filter(k => seriesMap[k].length);
+    let total = 0; container.innerHTML = '';
+    if (!keys.length) {
         container.innerHTML = `<div class="p-4 bg-slate-50 text-center text-xs text-slate-400">No stock available.</div>`;
-        document.getElementById('seller-available-count').innerText = `0 Available`;
-        return;
+    } else {
+        keys.forEach(k => {
+            total += seriesMap[k].length;
+            const badges = seriesMap[k].map(t => `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-mono px-2 py-0.5 rounded-md inline-block m-0.5">${t}</span>`).join('');
+            container.innerHTML += `<div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2"><div class="flex justify-between items-center border-b border-slate-200 pb-1.5"><span class="text-xs font-bold text-slate-800">Series: ${k}</span><span class="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">${seriesMap[k].length} Left</span></div><div class="flex flex-wrap max-h-[140px] overflow-y-auto">${badges}</div></div>`;
+        });
     }
-
-    keys.forEach(series => {
-        let tickets = seriesMap[series];
-        if (tickets.length === 0) return;
-        totalAvail += tickets.length;
-        let badges = tickets.map(t => `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-mono px-2 py-0.5 rounded-md inline-block m-0.5">${t}</span>`).join('');
-        container.innerHTML += `<div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2"><div class="flex justify-between items-center border-b border-slate-200 pb-1.5"><span class="text-xs font-bold text-slate-800">Series: ${series}</span><span class="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">${tickets.length} Left</span></div><div class="flex flex-wrap max-h-[140px] overflow-y-auto">${badges}</div></div>`;
-    });
-    document.getElementById('seller-available-count').innerText = `${totalAvail} Available`;
+    $(badgeId).innerText = `${total} Available`;
 }
+const renderPurchaseAvailableStock = () => fetchAndRenderStockPool(currentStockCategory, 'stock-filter-date', 'purchase-available-series-container', 'available-total-badge');
+const renderSellerAvailableStockIndividual = () => fetchAndRenderStockPool(currentSellerStockCategory, 'seller-stock-filter-date', 'seller-purchase-indv-container', 'seller-available-count');
 
-// ================= PURCHASE ENTRY (WITH MANDATORY STICKY PRICE) =================
+// ================= PURCHASE ENTRY (MANDATORY STICKY PRICE) =================
 function openPurchaseEntryPage() {
     openSubPage('page-purchase-entry');
-    document.getElementById('pur-date').value = getISODateString();
-    
-    // Auto-fill sticky remembered price if set
-    const priceInput = document.getElementById('pur-buying-price');
-    if (priceInput && rememberedPurchasePrice) {
-        priceInput.value = rememberedPurchasePrice;
-    }
-    
+    $('pur-date').value = getISODateString();
+    if (rememberedPurchasePrice) $('pur-buying-price').value = rememberedPurchasePrice;
     onPurchaseItemChange();
 }
 
-function onPurchaseItemChange() {
-    const item = document.getElementById('pur-item').value;
-    const seriesSelect = document.getElementById('pur-series');
-    seriesSelect.innerHTML = '';
-    (seriesOptionsMap[item] || []).forEach(s => seriesSelect.appendChild(new Option(s, s)));
-    calculatePurchaseCost();
-}
-
 function calculatePurchaseCost() {
-    const series = document.getElementById('pur-series').value;
-    const fromStr = document.getElementById('pur-from').value.trim();
-    const toStr = document.getElementById('pur-to').value.trim();
-    const priceInput = document.getElementById('pur-buying-price');
-    const price = parseFloat(priceInput.value) || 0;
-
-    // Persist price changes in memory
-    if (priceInput.value && !isNaN(price) && price > 0) {
-        rememberedPurchasePrice = priceInput.value;
+    const price = parseFloat(val('pur-buying-price')) || 0;
+    if (val('pur-buying-price') && price > 0) {
+        rememberedPurchasePrice = val('pur-buying-price');
         localStorage.setItem('lastPurchasePrice', rememberedPurchasePrice);
     }
-
-    const calc = parseRangeQuantity(series, fromStr, toStr);
-    document.getElementById('pur-qty').value = calc.qty || 0;
-    document.getElementById('pur-total-amount').innerText = `₹${((calc.qty || 0) * price).toFixed(2)}`;
+    const calc = parseRangeQuantity(val('pur-series'), val('pur-from'), val('pur-to'));
+    $('pur-qty').value = calc.qty || 0;
+    $('pur-total-amount').innerText = fmtCurr((calc.qty || 0) * price);
 }
 
 function handlePurchaseBlurAutoDraft() {
-    const priceVal = document.getElementById('pur-buying-price').value.trim();
-    const price = parseFloat(priceVal);
-
-    // BLOCK ENTRY: User cannot auto-draft without setting price first
-    if (!priceVal || isNaN(price) || price <= 0) {
-        return;
-    }
-
-    const group = document.getElementById('pur-group').value.trim().toUpperCase();
-    const fromStr = document.getElementById('pur-from').value.trim();
-    const toStr = document.getElementById('pur-to').value.trim();
-
-    if (group && fromStr) {
-        const item = document.getElementById('pur-item').value;
-        const series = document.getElementById('pur-series').value;
-        const date = formatToDBDate(document.getElementById('pur-date').value || getISODateString());
-        const calc = parseRangeQuantity(series, fromStr, toStr);
-
-        if (!calc.error) {
-            let ticketRangeStr = formatTicketRangeString(group, parseInt(fromStr), calc.actualToVal);
-            
-            // Duplicate Check
-            let exists = pendingPurchaseDraft.some(d => 
-                d.date === date && d.item === item && d.series === series && d.ticket_range === ticketRangeStr
-            );
-
-            if (!exists) {
-                pendingPurchaseDraft.push({ 
-                    date, 
-                    item, 
-                    series, 
-                    ticket_range: ticketRangeStr, 
-                    qty: calc.qty, 
-                    cost_raw: calc.qty * price, 
-                    mlot_id: currentMlotId 
-                });
-                document.getElementById('pur-draft-count').innerText = pendingPurchaseDraft.length;
-            }
-        }
+    const price = parseFloat(val('pur-buying-price')), grp = val('pur-group').toUpperCase(), from = val('pur-from');
+    if (!price || price <= 0 || !grp || !from) return;
+    const calc = parseRangeQuantity(val('pur-series'), from, val('pur-to'));
+    if (calc.error) return;
+    const range = formatTicketRangeString(grp, parseInt(from), calc.actualToVal);
+    const date = formatToDBDate(val('pur-date') || getISODateString());
+    if (!pendingPurchaseDraft.some(d => d.date === date && d.item === val('pur-item') && d.series === val('pur-series') && d.ticket_range === range)) {
+        pendingPurchaseDraft.push({ date, item: val('pur-item'), series: val('pur-series'), ticket_range: range, qty: calc.qty, cost_raw: calc.qty * price, mlot_id: currentMlotId });
+        $('pur-draft-count').innerText = pendingPurchaseDraft.length;
     }
 }
 
-function addPurchaseDraft(event) {
-    if (event) event.preventDefault();
-
-    const priceInput = document.getElementById('pur-buying-price');
-    const priceVal = priceInput.value.trim();
-    const price = parseFloat(priceVal);
-
-    // HARD BLOCK: Stop entry if price is missing or invalid
-    if (!priceVal || isNaN(price) || price <= 0) {
-        alert("Set Price is required! Please enter a valid Buying Price before adding tickets.");
-        priceInput.focus();
-        return;
+function addPurchaseDraft(e) {
+    if (e) e.preventDefault();
+    const price = parseFloat(val('pur-buying-price')), grp = val('pur-group').toUpperCase(), from = val('pur-from');
+    if (!price || price <= 0) { alert("Set Price is required! Please enter Buying Price."); $('pur-buying-price').focus(); return false; }
+    if (!grp || !from) { alert("Please enter both Group and Ticket Number."); return false; }
+    const calc = parseRangeQuantity(val('pur-series'), from, val('pur-to'));
+    if (calc.error) { alert("Invalid ticket range."); return false; }
+    const range = formatTicketRangeString(grp, parseInt(from), calc.actualToVal);
+    const date = formatToDBDate(val('pur-date') || getISODateString());
+    if (pendingPurchaseDraft.some(d => d.date === date && d.item === val('pur-item') && d.series === val('pur-series') && d.ticket_range === range)) {
+        alert("DUPLICATE ENTRY!\nThis purchase ticket range is already added in draft."); return false;
     }
-
-    // Retain sticky price
-    rememberedPurchasePrice = priceVal;
-    localStorage.setItem('lastPurchasePrice', rememberedPurchasePrice);
-
-    const date = formatToDBDate(document.getElementById('pur-date').value || getISODateString());
-    const item = document.getElementById('pur-item').value;
-    const series = document.getElementById('pur-series').value;
-    const group = document.getElementById('pur-group').value.trim().toUpperCase();
-    const fromStr = document.getElementById('pur-from').value.trim();
-    const toStr = document.getElementById('pur-to').value.trim();
-
-    if (!group || !fromStr) { 
-        alert("Please enter both Group and Ticket Number."); 
-        return; 
-    }
-
-    const calc = parseRangeQuantity(series, fromStr, toStr);
-    if (calc.error) { 
-        alert("Invalid ticket range."); 
-        return; 
-    }
-
-    let ticketRangeStr = formatTicketRangeString(group, parseInt(fromStr), calc.actualToVal);
-
-    let exists = pendingPurchaseDraft.some(d => 
-        d.date === date && d.item === item && d.series === series && d.ticket_range === ticketRangeStr
-    );
-
-    if (exists) {
-        alert("This ticket range is already added in your draft!");
-        return;
-    }
-
-    pendingPurchaseDraft.push({ 
-        date, 
-        item, 
-        series, 
-        ticket_range: ticketRangeStr, 
-        qty: calc.qty, 
-        cost_raw: calc.qty * price, 
-        mlot_id: currentMlotId 
-    });
-
-    document.getElementById('pur-draft-count').innerText = pendingPurchaseDraft.length;
-    
-    // Clear ticket inputs only, keep price sticky for next entry
-    document.getElementById('pur-from').value = ''; 
-    document.getElementById('pur-to').value = '';
-    calculatePurchaseCost();
+    pendingPurchaseDraft.push({ date, item: val('pur-item'), series: val('pur-series'), ticket_range: range, qty: calc.qty, cost_raw: calc.qty * price, mlot_id: currentMlotId });
+    $('pur-draft-count').innerText = pendingPurchaseDraft.length;
+    $('pur-from').value = ''; $('pur-to').value = ''; calculatePurchaseCost();
+    return true;
 }
 
 function openPurchaseDraftModal() {
-    const tbody = document.getElementById('pur-draft-tbody');
-    const tfoot = document.getElementById('pur-draft-tfoot');
-    tbody.innerHTML = ''; 
+    const tbody = $('pur-draft-tbody'), tfoot = $('pur-draft-tfoot');
     let q = 0, c = 0;
-
-    if (pendingPurchaseDraft.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400">Draft is empty. Add ticket entries first.</td></tr>`;
-        tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-purple-600">0</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹0.00</td></tr>`;
+    if (!pendingPurchaseDraft.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400">Draft is empty.</td></tr>`;
     } else {
-        pendingPurchaseDraft.forEach((item, idx) => {
-            q += item.qty; 
-            c += item.cost_raw;
-            tbody.innerHTML += `
-                <tr class="border-b border-slate-100">
-                    <td class="p-2">${idx + 1}</td>
-                    <td class="p-2">${item.item}</td>
-                    <td class="p-2 font-bold">${item.series}</td>
-                    <td class="p-2 font-mono text-[10px]">${item.ticket_range}</td>
-                    <td class="p-2 font-bold text-purple-600">${item.qty}</td>
-                    <td class="p-2 font-bold">₹${Number(item.cost_raw).toFixed(2)}</td>
-                    <td class="p-2 text-center">
-                        <button onclick="pendingPurchaseDraft.splice(${idx}, 1); document.getElementById('pur-draft-count').innerText = pendingPurchaseDraft.length; openPurchaseDraftModal();" class="text-red-500 hover:text-red-700">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
-                    </td>
-                </tr>
-            `;
-        });
-        tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-purple-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${c.toFixed(2)}</td></tr>`;
+        tbody.innerHTML = pendingPurchaseDraft.map((item, idx) => {
+            q += item.qty; c += item.cost_raw;
+            return `<tr class="border-b border-slate-100"><td class="p-2">${idx+1}</td><td class="p-2">${item.item}</td><td class="p-2 font-bold">${item.series}</td><td class="p-2 font-mono text-[10px]">${item.ticket_range}</td><td class="p-2 font-bold text-purple-600">${item.qty}</td><td class="p-2 font-bold">${fmtCurr(item.cost_raw)}</td><td class="p-2 text-center"><button onclick="pendingPurchaseDraft.splice(${idx},1);$('pur-draft-count').innerText=pendingPurchaseDraft.length;openPurchaseDraftModal()" class="text-red-500"><i class="fa-solid fa-trash"></i></button></td></tr>`;
+        }).join('');
     }
+    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-purple-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">${fmtCurr(c)}</td></tr>`;
     toggleModal('purchase-draft-modal', true);
 }
-
-// Closes Purchase Draft Modal
-function closePurchaseDraftModal() {
-    toggleModal('purchase-draft-modal', false);
-}
-
-// Closes Show Ticket Modal
-function closeShowTicketModal() {
-    toggleModal('show-ticket-modal', false);
-}
+const closePurchaseDraftModal = () => toggleModal('purchase-draft-modal', false);
+const closeShowTicketModal = () => toggleModal('show-ticket-modal', false);
 
 async function savePurchaseToStore() {
-    try {
-        if (!currentMlotId) {
-            currentMlotId = localStorage.getItem('currentMlotId');
-        }
-        if (!currentMlotId) {
-            alert("Error: MLOT ID session is missing. Please log out and log in again.");
-            return;
-        }
-
-        // If draft array is empty but form inputs are completed, auto-add first
-        if (pendingPurchaseDraft.length === 0) {
-            const group = document.getElementById('pur-group')?.value.trim();
-            const fromStr = document.getElementById('pur-from')?.value.trim();
-            const priceVal = document.getElementById('pur-buying-price')?.value.trim();
-
-            if (group && fromStr && priceVal) {
-                addPurchaseDraft(null);
-            }
-        }
-
-        if (pendingPurchaseDraft.length === 0) { 
-            alert("Draft is empty! Please enter Group, Ticket Range, and Price first."); 
-            return; 
-        }
-
-        // Prepare clean records with validated DD/MM/YYYY date format
-        const cleanDraft = pendingPurchaseDraft.map(item => ({
-            date: formatToDBDate(item.date),
-            item: String(item.item),
-            series: String(item.series),
-            ticket_range: String(item.ticket_range),
-            qty: parseInt(item.qty) || 0,
-            cost_raw: parseFloat(item.cost_raw) || 0.00,
-            mlot_id: String(currentMlotId)
-        }));
-
-        const { data, error } = await _supabase
-            .from('purchase_store')
-            .insert(cleanDraft);
-
-        if (error) {
-            console.error("Supabase purchase_store error:", error);
-            alert("Database Error (" + error.code + "): " + error.message + "\n\nTip: Ensure the date column in purchase_store is TEXT and RLS allows INSERT.");
-            return;
-        }
-
-        alert("Saved to store inventory successfully!");
-        pendingPurchaseDraft = [];
-        document.getElementById('pur-draft-count').innerText = '0';
-        
-        // Reset form and re-apply sticky price for future entries
-        document.getElementById('form-purchase-manual').reset();
-        document.getElementById('pur-date').value = getISODateString();
-        if (rememberedPurchasePrice) {
-            document.getElementById('pur-buying-price').value = rememberedPurchasePrice;
-        }
-
-        closePurchaseDraftModal();
-        switchTab('purchase');
-
-    } catch (err) {
-        console.error("Exception in savePurchaseToStore:", err);
-        alert("Unexpected script error: " + err.message);
+    if (!currentMlotId) currentMlotId = localStorage.getItem('currentMlotId');
+    if (!pendingPurchaseDraft.length && val('pur-group') && val('pur-from') && val('pur-buying-price')) {
+        if (!addPurchaseDraft(null)) return;
     }
+    if (!pendingPurchaseDraft.length) return alert("Draft is empty! Add tickets first.");
+    const payload = pendingPurchaseDraft.map(item => ({ ...item, date: formatToDBDate(item.date), qty: parseInt(item.qty), cost_raw: parseFloat(item.cost_raw), mlot_id: String(currentMlotId) }));
+    const { error } = await _supabase.from('purchase_store').insert(payload);
+    if (error) return alert("Database Error: " + error.message);
+    alert("Saved to store inventory successfully!");
+    pendingPurchaseDraft = []; $('pur-draft-count').innerText = '0';
+    $('form-purchase-manual').reset(); $('pur-date').value = getISODateString();
+    if (rememberedPurchasePrice) $('pur-buying-price').value = rememberedPurchasePrice;
+    closePurchaseDraftModal(); switchTab('purchase');
 }
 
-// ================= SALE ENTRY & AUTO-DRAFT =================
+// ================= SALE ENTRY & DUPLICATE RESTRICTION =================
 function openSaleEntryPage() {
     openSubPage('page-sale-entry');
-    document.getElementById('sale-date').value = getISODateString();
-    updateSellerCodeDropdown();
-    onItemChange();
-}
-
-async function updateSellerCodeDropdown() {
-    const select = document.getElementById('sale-seller-code');
-    const { data } = await _supabase.from('sellers').select('code').eq('mlot_id', currentMlotId);
-    select.innerHTML = '<option value="">Select Code</option>';
-    (data || []).forEach(s => select.appendChild(new Option(s.code, s.code)));
-}
-
-async function onSellerCodeChange() {
-    const code = document.getElementById('sale-seller-code').value;
-    const nameInput = document.getElementById('sale-seller-name');
-    if(!code) { nameInput.value = ""; activeSaleSetPrice = 6.50; calculateSalePrice(); return; }
-    const { data } = await _supabase.from('sellers').select('name, set_price').eq('mlot_id', currentMlotId).eq('code', code).single();
-    nameInput.value = data ? data.name : "";
-    activeSaleSetPrice = (data && data.set_price) ? data.set_price : 6.50;
-    calculateSalePrice();
-}
-
-function onItemChange() {
-    const item = document.getElementById('sale-item').value;
-    const seriesSelect = document.getElementById('sale-series');
-    seriesSelect.innerHTML = '';
-    (seriesOptionsMap[item] || []).forEach(s => seriesSelect.appendChild(new Option(s, s)));
-    calculateSalePrice();
+    $('sale-date').value = getISODateString();
+    updateSellerCodeDropdown(); onItemChange();
 }
 
 function calculateSalePrice() {
-    const series = document.getElementById('sale-series').value;
-    const fromStr = document.getElementById('sale-from').value.trim();
-    const toStr = document.getElementById('sale-to').value.trim();
-    const calc = parseRangeQuantity(series, fromStr, toStr);
-    document.getElementById('sale-qty').value = calc.qty || 0;
-    document.getElementById('sale-price').value = `₹${((calc.qty || 0) * activeSaleSetPrice).toFixed(2)}`;
+    const calc = parseRangeQuantity(val('sale-series'), val('sale-from'), val('sale-to'));
+    $('sale-qty').value = calc.qty || 0;
+    $('sale-price').value = fmtCurr((calc.qty || 0) * activeSaleSetPrice);
 }
 
 function handleSaleBlurAutoDraft() {
-    const code = document.getElementById('sale-seller-code').value;
-    const group = document.getElementById('sale-group').value.trim();
-    const fromStr = document.getElementById('sale-from').value.trim();
-    const toStr = document.getElementById('sale-to').value.trim();
-
-    if (code && group && fromStr && toStr) {
-        const series = document.getElementById('sale-series').value;
-        const calc = parseRangeQuantity(series, fromStr, toStr);
-        if (!calc.error) {
-            let ticketRangeStr = formatTicketRangeString(group.toUpperCase(), parseInt(fromStr), calc.actualToVal);
-            const entryIndividualTickets = expandRangeToIndividualTickets(ticketRangeStr);
-            let draftedSet = new Set();
-            pendingBatchTickets.forEach(b => expandRangeToIndividualTickets(b.ticket_range).forEach(t => draftedSet.add(t)));
-            if (!entryIndividualTickets.some(t => draftedSet.has(t))) {
-                pendingBatchTickets.push({ date: formatToDBDate(document.getElementById('sale-date').value || getISODateString()), code, name: document.getElementById('sale-seller-name').value, item: document.getElementById('sale-item').value, series, ticket_range: ticketRangeStr, qty: calc.qty, price_raw: calc.qty * activeSaleSetPrice, mlot_id: currentMlotId });
-                document.getElementById('batch-count').innerText = pendingBatchTickets.length;
-            }
-        }
+    const code = val('sale-seller-code'), grp = val('sale-group'), from = val('sale-from'), to = val('sale-to');
+    if (!code || !grp || !from || !to) return;
+    const calc = parseRangeQuantity(val('sale-series'), from, to);
+    if (calc.error) return;
+    const range = formatTicketRangeString(grp.toUpperCase(), parseInt(from), calc.actualToVal);
+    const tickets = expandRangeToIndividualTickets(range), draftedSet = new Set();
+    pendingBatchTickets.forEach(b => expandRangeToIndividualTickets(b.ticket_range).forEach(t => draftedSet.add(t)));
+    if (!tickets.some(t => draftedSet.has(t))) {
+        pendingBatchTickets.push({ date: formatToDBDate(val('sale-date') || getISODateString()), code, name: val('sale-seller-name'), item: val('sale-item'), series: val('sale-series'), ticket_range: range, qty: calc.qty, price_raw: calc.qty * activeSaleSetPrice, mlot_id: currentMlotId });
+        $('batch-count').innerText = pendingBatchTickets.length;
     }
 }
 
 async function addCurrentEntryToList() {
-    const date = formatToDBDate(document.getElementById('sale-date').value || getISODateString());
-    const code = document.getElementById('sale-seller-code').value;
-    const item = document.getElementById('sale-item').value;
-    const series = document.getElementById('sale-series').value;
-    const group = document.getElementById('sale-group').value.trim().toUpperCase();
-    const fromStr = document.getElementById('sale-from').value.trim();
-    const toStr = document.getElementById('sale-to').value.trim();
+    const date = formatToDBDate(val('sale-date') || getISODateString()), code = val('sale-seller-code'), item = val('sale-item'), grp = val('sale-group').toUpperCase(), from = val('sale-from');
+    if (!code) { alert("Please select Seller Code."); return false; }
+    if (!grp || !from) { alert("Provide Group and Ticket number."); return false; }
+    const calc = parseRangeQuantity(val('sale-series'), from, val('sale-to'));
+    if (calc.error) { alert("Invalid ticket range."); return false; }
+    const range = formatTicketRangeString(grp, parseInt(from), calc.actualToVal);
+    const entryTickets = expandRangeToIndividualTickets(range);
 
-    if (!code || !group || !fromStr) { alert("Provide Code, Group, and From number."); return; }
-    const calc = parseRangeQuantity(series, fromStr, toStr);
-    if (calc.error) { alert("Invalid range."); return; }
+    // 1. Batch duplicate check
+    const batchSet = new Set();
+    pendingBatchTickets.filter(b => b.item === item && b.date === date).forEach(b => expandRangeToIndividualTickets(b.ticket_range).forEach(t => batchSet.add(t)));
+    if (entryTickets.some(t => batchSet.has(t))) { alert("DUPLICATE ENTRY!\nTicket already in batch list."); return false; }
 
-    let ticketRangeStr = formatTicketRangeString(group, parseInt(fromStr), calc.actualToVal);
-    const entryTickets = expandRangeToIndividualTickets(ticketRangeStr);
+    // 2. Fetch stock & sold records
+    const [pur, sales, unsold] = await Promise.all(['purchase_store', 'sales_records', 'unsold_records'].map(tbl => _supabase.from(tbl).select('*').eq('mlot_id', currentMlotId).eq('item', item).eq('date', date)));
+    const availSet = new Set(), soldSet = new Set();
+    (pur.data || []).forEach(p => expandRangeToIndividualTickets(p.ticket_range).forEach(t => availSet.add(t)));
+    (sales.data || []).forEach(s => expandRangeToIndividualTickets(s.ticket_range).forEach(t => soldSet.add(t)));
+    (unsold.data || []).forEach(u => expandRangeToIndividualTickets(u.ticket_range).forEach(t => soldSet.delete(t)));
 
-    const { data: purData } = await _supabase.from('purchase_store').select('*').eq('mlot_id', currentMlotId).eq('item', item).eq('date', date);
-    const { data: salesData } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId).eq('item', item).eq('date', date);
-    const { data: unsoldData } = await _supabase.from('unsold_records').select('*').eq('mlot_id', currentMlotId).eq('item', item).eq('date', date);
+    // 3. Database sold duplicate check
+    const dup = entryTickets.find(t => soldSet.has(t));
+    if (dup) { alert(`DUPLICATE ENTRY!\nTicket '${dup}' already sold on ${date}.`); return false; }
 
-    let availableSet = new Set(); (purData || []).forEach(p => expandRangeToIndividualTickets(p.ticket_range).forEach(t => availableSet.add(t)));
-    let soldSet = new Set(); (salesData || []).forEach(s => expandRangeToIndividualTickets(s.ticket_range).forEach(t => soldSet.add(t)));
-    (unsoldData || []).forEach(u => expandRangeToIndividualTickets(u.ticket_range).forEach(t => soldSet.delete(t)));
+    // 4. Stock validation
+    const missing = entryTickets.find(t => !availSet.has(t));
+    if (missing) { alert(`Stock Error: Ticket '${missing}' is not available in stock.`); return false; }
 
-    if (!entryTickets.every(t => availableSet.has(t) && !soldSet.has(t))) { alert("Tickets outside available stock or already sold!"); return; }
-
-    pendingBatchTickets.push({ date, code, name: document.getElementById('sale-seller-name').value, item, series, ticket_range: ticketRangeStr, qty: parseInt(document.getElementById('sale-qty').value), price_raw: parseFloat(document.getElementById('sale-price').value.replace('₹', '')), mlot_id: currentMlotId });
-    document.getElementById('batch-count').innerText = pendingBatchTickets.length;
-    document.getElementById('sale-from').value = ''; document.getElementById('sale-to').value = '';
-    calculateSalePrice();
+    pendingBatchTickets.push({ date, code, name: val('sale-seller-name'), item, series: val('sale-series'), ticket_range: range, qty: parseInt(val('sale-qty')), price_raw: parseFloat(val('sale-price').replace('₹', '')), mlot_id: currentMlotId });
+    $('batch-count').innerText = pendingBatchTickets.length;
+    $('sale-from').value = ''; $('sale-to').value = ''; calculateSalePrice();
+    return true;
 }
 
 function openShowTicketModal() {
-    const tbody = document.getElementById('ticket-preview-tbody');
-    const tfoot = document.getElementById('ticket-preview-tfoot');
-    tbody.innerHTML = ''; let q = 0, p = 0;
-    pendingBatchTickets.forEach((t, i) => {
-        q += t.qty; p += t.price_raw;
-        tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2">${i+1}</td><td class="p-2 font-semibold text-indigo-600">${t.code}</td><td class="p-2">${t.name}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-emerald-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${t.price_raw.toFixed(2)}</td><td class="p-2 text-center"><button onclick="pendingBatchTickets.splice(${i},1);openShowTicketModal()" class="text-red-500"><i class="fa-solid fa-trash"></i></button></td></tr>`;
-    });
-    tfoot.innerHTML = `<tr><td colspan="6" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
+    const tbody = $('ticket-preview-tbody'), tfoot = $('ticket-preview-tfoot');
+    let q = 0, p = 0;
+    if (!pendingBatchTickets.length) {
+        tbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400">No tickets in batch.</td></tr>`;
+    } else {
+        tbody.innerHTML = pendingBatchTickets.map((t, i) => {
+            q += t.qty; p += t.price_raw;
+            return `<tr class="border-b border-slate-100"><td class="p-2">${i+1}</td><td class="p-2 font-semibold text-indigo-600">${t.code}</td><td class="p-2">${t.name}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-emerald-600 font-bold">${t.qty}</td><td class="p-2 font-bold">${fmtCurr(t.price_raw)}</td><td class="p-2 text-center"><button onclick="pendingBatchTickets.splice(${i},1);$('batch-count').innerText=pendingBatchTickets.length;openShowTicketModal()" class="text-red-500"><i class="fa-solid fa-trash"></i></button></td></tr>`;
+        }).join('');
+    }
+    tfoot.innerHTML = `<tr><td colspan="6" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">${fmtCurr(p)}</td></tr>`;
     toggleModal('show-ticket-modal', true);
 }
 
 async function submitTicketEntries() {
-    if (pendingBatchTickets.length === 0) return;
-    const { error } = await _supabase.from('sales_records').insert(pendingBatchTickets);
-    if (error) alert("Error: " + error.message);
-    else {
-        alert("Tickets saved successfully!");
-        pendingBatchTickets = [];
-        document.getElementById('batch-count').innerText = '0';
-        toggleModal('show-ticket-modal', false);
-        switchTab('sale');
+    if (!currentMlotId) currentMlotId = localStorage.getItem('currentMlotId');
+    if (!pendingBatchTickets.length && val('sale-seller-code') && val('sale-group') && val('sale-from')) {
+        if (!await addCurrentEntryToList()) return;
     }
+    if (!pendingBatchTickets.length) return alert("No tickets to submit! Add tickets to batch first.");
+    const payload = pendingBatchTickets.map(t => ({ ...t, date: formatToDBDate(t.date), qty: parseInt(t.qty), price_raw: parseFloat(t.price_raw), mlot_id: String(currentMlotId) }));
+    const { error } = await _supabase.from('sales_records').insert(payload);
+    if (error) return alert("Database Error: " + error.message);
+    alert("Tickets submitted and saved successfully!");
+    pendingBatchTickets = []; $('batch-count').innerText = '0';
+    closeShowTicketModal(); switchTab('sale');
 }
 
-// ================= UNSOLD & QUICK ENTRY (WITH RESTRICTIONS) =================
-function openUnsoldTicketPage() {
-    openSubPage('page-unsold-ticket');
-    document.getElementById('unsold-date').value = getISODateString();
-    document.getElementById('unsold-q-date').value = getISODateString();
-    updateUnsoldCodeDropdown();
-    updateQuickUnsoldCodeDropdown();
-    onUnsoldItemChange();
-    switchUnsoldMode('detailed');
+// ================= UNSOLD TICKETS (WITH RESTRICTIONS) =================
+function toggleUnsoldModeUI(tabDet, tabQ, contDet, contQ, mode) {
+    $(tabDet).className = `flex-1 py-2 text-xs font-bold rounded-lg ${mode === 'detailed' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600'}`;
+    $(tabQ).className = `flex-1 py-2 text-xs font-bold rounded-lg ${mode === 'quick' ? 'bg-orange-600 text-white shadow' : 'text-slate-600'}`;
+    $(contDet).classList.toggle('hidden', mode !== 'detailed');
+    $(contQ).classList.toggle('hidden', mode !== 'quick');
 }
-
-function switchUnsoldMode(mode) {
-    document.getElementById('unsold-tab-detailed').className = `flex-1 py-2 text-xs font-bold rounded-lg ${mode === 'detailed' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600'}`;
-    document.getElementById('unsold-tab-quick').className = `flex-1 py-2 text-xs font-bold rounded-lg ${mode === 'quick' ? 'bg-orange-600 text-white shadow' : 'text-slate-600'}`;
-    document.getElementById('container-unsold-detailed').classList.toggle('hidden', mode !== 'detailed');
-    document.getElementById('container-unsold-quick').classList.toggle('hidden', mode !== 'quick');
-}
-
-async function updateUnsoldCodeDropdown() {
-    const select = document.getElementById('unsold-seller-code');
-    const { data } = await _supabase.from('sellers').select('code').eq('mlot_id', currentMlotId);
-    select.innerHTML = '<option value="">Select Code</option>';
-    (data || []).forEach(s => select.appendChild(new Option(s.code, s.code)));
-}
-
-async function updateQuickUnsoldCodeDropdown() {
-    const select = document.getElementById('unsold-q-seller-code');
-    if (!select) return;
-    const { data } = await _supabase.from('sellers').select('code').eq('mlot_id', currentMlotId);
-    select.innerHTML = '<option value="">Select Code</option>';
-    (data || []).forEach(s => select.appendChild(new Option(s.code, s.code)));
-}
-
-async function onUnsoldCodeChange() {
-    const code = document.getElementById('unsold-seller-code').value;
-    const nameInput = document.getElementById('unsold-seller-name');
-    if(!code) { nameInput.value = ""; activeUnsoldSetPrice = 6.50; calculateUnsoldPrice(); return; }
-    const { data } = await _supabase.from('sellers').select('name, set_price').eq('mlot_id', currentMlotId).eq('code', code).single();
-    nameInput.value = data ? data.name : "";
-    activeUnsoldSetPrice = (data && data.set_price) ? data.set_price : 6.50;
-    calculateUnsoldPrice();
-}
-
-async function onQuickSellerCodeChange() {
-    const code = document.getElementById('unsold-q-seller-code').value;
-    const nameInput = document.getElementById('unsold-q-seller-name');
-    if (!code) { nameInput.value = ""; return; }
-    const { data } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', code).single();
-    nameInput.value = data ? data.name : "";
-}
-
-function onUnsoldItemChange() {
-    const item = document.getElementById('unsold-item').value;
-    const seriesSelect = document.getElementById('unsold-series');
-    seriesSelect.innerHTML = '';
-    (seriesOptionsMap[item] || []).forEach(s => seriesSelect.appendChild(new Option(s, s)));
-    calculateUnsoldPrice();
-}
+const switchUnsoldMode = m => toggleUnsoldModeUI('unsold-tab-detailed', 'unsold-tab-quick', 'container-unsold-detailed', 'container-unsold-quick', m);
+const switchSellerUnsoldMode = m => toggleUnsoldModeUI('s-unsold-tab-detailed', 's-unsold-tab-quick', 's-container-unsold-detailed', 's-container-unsold-quick', m);
 
 function calculateUnsoldPrice() {
-    const series = document.getElementById('unsold-series').value;
-    const fromStr = document.getElementById('unsold-from').value.trim();
-    const toStr = document.getElementById('unsold-to').value.trim();
-    const calc = parseRangeQuantity(series, fromStr, toStr);
-    document.getElementById('unsold-qty').value = calc.qty || 0;
-    document.getElementById('unsold-price').value = `₹${((calc.qty || 0) * activeUnsoldSetPrice).toFixed(2)}`;
+    const calc = parseRangeQuantity(val('unsold-series'), val('unsold-from'), val('unsold-to'));
+    $('unsold-qty').value = calc.qty || 0;
+    $('unsold-price').value = fmtCurr((calc.qty || 0) * activeUnsoldSetPrice);
 }
 
-async function validateSellerPurchasedTickets(mlotId, sellerCode, item, date, ticketRangeStr) {
-    const { data: salesRecords } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId).eq('code', sellerCode).eq('item', item).eq('date', date);
-    let sellerPurchasedSet = new Set();
-    (salesRecords || []).forEach(s => expandRangeToIndividualTickets(s.ticket_range).forEach(t => sellerPurchasedSet.add(t)));
-    return expandRangeToIndividualTickets(ticketRangeStr).every(t => sellerPurchasedSet.has(t));
+function calculateSellerUnsoldPrice() {
+    const calc = parseRangeQuantity(val('s-unsold-series'), val('s-unsold-from'), val('s-unsold-to'));
+    $('s-unsold-qty').value = calc.qty || 0;
+    $('s-unsold-price').value = fmtCurr((calc.qty || 0) * activeSellerUnsoldSetPrice);
+}
+
+async function validateSellerPurchasedTickets(mlotId, code, item, date, rangeStr) {
+    const { data } = await _supabase.from('sales_records').select('*').eq('mlot_id', mlotId).eq('code', code).eq('item', item).eq('date', date);
+    const boughtSet = new Set();
+    (data || []).forEach(s => expandRangeToIndividualTickets(s.ticket_range).forEach(t => boughtSet.add(t)));
+    return expandRangeToIndividualTickets(rangeStr).every(t => boughtSet.has(t));
 }
 
 function handleUnsoldBlurAutoDraft() {
-    const code = document.getElementById('unsold-seller-code').value;
-    const group = document.getElementById('unsold-group').value.trim();
-    const fromStr = document.getElementById('unsold-from').value.trim();
-    const toStr = document.getElementById('unsold-to').value.trim();
-
-    if (code && group && fromStr && toStr) {
-        const series = document.getElementById('unsold-series').value;
-        const calc = parseRangeQuantity(series, fromStr, toStr);
-        if (!calc.error) {
-            let ticketRangeStr = formatTicketRangeString(group.toUpperCase(), parseInt(fromStr), calc.actualToVal);
-            let exists = pendingUnsoldBatch.some(u => u.code === code && u.item === document.getElementById('unsold-item').value && u.series === series && u.ticket_range === ticketRangeStr);
-            if (!exists) {
-                pendingUnsoldBatch.push({ date: formatToDBDate(document.getElementById('unsold-date').value || getISODateString()), code, name: document.getElementById('unsold-seller-name').value, item: document.getElementById('unsold-item').value, series, ticket_range: ticketRangeStr, qty: calc.qty, price_raw: calc.qty * activeUnsoldSetPrice, mlot_id: currentMlotId });
-                document.getElementById('unsold-batch-count').innerText = pendingUnsoldBatch.length;
-            }
-        }
+    const code = val('unsold-seller-code'), grp = val('unsold-group'), from = val('unsold-from'), to = val('unsold-to');
+    if (!code || !grp || !from || !to) return;
+    const calc = parseRangeQuantity(val('unsold-series'), from, to);
+    if (calc.error) return;
+    const range = formatTicketRangeString(grp.toUpperCase(), parseInt(from), calc.actualToVal);
+    const date = formatToDBDate(val('unsold-date') || getISODateString());
+    if (!pendingUnsoldBatch.some(u => u.code === code && u.item === val('unsold-item') && u.series === val('unsold-series') && u.ticket_range === range)) {
+        pendingUnsoldBatch.push({ date, code, name: val('unsold-seller-name'), item: val('unsold-item'), series: val('unsold-series'), ticket_range: range, qty: calc.qty, price_raw: calc.qty * activeUnsoldSetPrice, mlot_id: currentMlotId });
+        $('unsold-batch-count').innerText = pendingUnsoldBatch.length;
     }
 }
 
 function addUnsoldEntryToBatch() {
-    const date = formatToDBDate(document.getElementById('unsold-date').value || getISODateString());
-    const code = document.getElementById('unsold-seller-code').value;
-    const item = document.getElementById('unsold-item').value;
-    const series = document.getElementById('unsold-series').value;
-    const group = document.getElementById('unsold-group').value.trim().toUpperCase();
-    const fromStr = document.getElementById('unsold-from').value.trim();
-    const toStr = document.getElementById('unsold-to').value.trim();
-
-    if (!code || !group || !fromStr) { alert("Provide Code, Group, and From number."); return; }
-    const calc = parseRangeQuantity(series, fromStr, toStr);
-    if (calc.error) { alert("Invalid range."); return; }
-
-    pendingUnsoldBatch.push({ date, code, name: document.getElementById('unsold-seller-name').value, item, series, ticket_range: formatTicketRangeString(group, parseInt(fromStr), calc.actualToVal), qty: calc.qty, price_raw: calc.qty * activeUnsoldSetPrice, mlot_id: currentMlotId });
-    document.getElementById('unsold-batch-count').innerText = pendingUnsoldBatch.length;
-    document.getElementById('unsold-from').value = ''; document.getElementById('unsold-to').value = '';
-    calculateUnsoldPrice();
-}
-
-async function submitUnsoldDetailed(event) {
-    event.preventDefault();
-    if (pendingUnsoldBatch.length === 0) { handleUnsoldBlurAutoDraft(); if (pendingUnsoldBatch.length === 0) { alert("No unsold entries added."); return; } }
-
-    for (let entry of pendingUnsoldBatch) {
-        let isValid = await validateSellerPurchasedTickets(currentMlotId, entry.code, entry.item, entry.date, entry.ticket_range);
-        if (!isValid) { alert(`Prohibited! Ticket range ${entry.ticket_range} for seller ${entry.code} was not purchased from MLOT user.`); return; }
+    const date = formatToDBDate(val('unsold-date') || getISODateString()), code = val('unsold-seller-code'), grp = val('unsold-group').toUpperCase(), from = val('unsold-from');
+    if (!code || !grp || !from) return alert("Provide Code, Group, and From number.");
+    const calc = parseRangeQuantity(val('unsold-series'), from, val('unsold-to'));
+    if (calc.error) return alert("Invalid range.");
+    const range = formatTicketRangeString(grp, parseInt(from), calc.actualToVal);
+    if (pendingUnsoldBatch.some(u => u.code === code && u.item === val('unsold-item') && u.date === date && u.ticket_range === range)) {
+        return alert("DUPLICATE ENTRY!\nUnsold ticket already in batch.");
     }
+    pendingUnsoldBatch.push({ date, code, name: val('unsold-seller-name'), item: val('unsold-item'), series: val('unsold-series'), ticket_range: range, qty: calc.qty, price_raw: calc.qty * activeUnsoldSetPrice, mlot_id: currentMlotId });
+    $('unsold-batch-count').innerText = pendingUnsoldBatch.length;
+    $('unsold-from').value = ''; $('unsold-to').value = ''; calculateUnsoldPrice();
+}
 
-    const { error } = await _supabase.from('unsold_records').insert(pendingUnsoldBatch);
-    if (error) alert("Error: " + error.message);
-    else {
-        alert("Unsold entries saved successfully!");
-        pendingUnsoldBatch = [];
-        document.getElementById('unsold-batch-count').innerText = '0';
-        document.getElementById('form-unsold-detailed').reset();
-        document.getElementById('unsold-date').value = getISODateString();
+async function submitUnsoldDetailed(e) {
+    e.preventDefault();
+    if (!pendingUnsoldBatch.length) { handleUnsoldBlurAutoDraft(); if (!pendingUnsoldBatch.length) return alert("No unsold entries added."); }
+    for (const entry of pendingUnsoldBatch) {
+        if (!await validateSellerPurchasedTickets(currentMlotId, entry.code, entry.item, entry.date, entry.ticket_range)) {
+            return alert(`Prohibited! Range ${entry.ticket_range} for seller ${entry.code} was not purchased from MLOT user.`);
+        }
     }
+    const payload = pendingUnsoldBatch.map(u => ({ ...u, date: formatToDBDate(u.date), qty: parseInt(u.qty), price_raw: parseFloat(u.price_raw), mlot_id: String(currentMlotId) }));
+    const { error } = await _supabase.from('unsold_records').insert(payload);
+    if (error) return alert("Error: " + error.message);
+    alert("Unsold entries saved successfully!");
+    pendingUnsoldBatch = []; $('unsold-batch-count').innerText = '0';
+    $('form-unsold-detailed').reset(); $('unsold-date').value = getISODateString();
 }
 
-async function submitUnsoldQuickEntry(event) {
-    event.preventDefault();
-    const code = document.getElementById('unsold-q-seller-code').value;
-    const qty = parseInt(document.getElementById('unsold-q-qty').value) || 0;
-    if (!code || qty <= 0) { alert("Select seller code and valid quantity."); return; }
+async function submitUnsoldQuickEntry(e) {
+    e.preventDefault();
+    const code = val('unsold-q-seller-code'), qty = parseInt(val('unsold-q-qty')) || 0;
+    if (!code || qty <= 0) return alert("Select seller code and valid quantity.");
+    const { error } = await _supabase.from('pending_unsold').insert([{
+        date: formatToDBDate(val('unsold-q-date') || getISODateString()), code, name: val('unsold-q-seller-name'), item: val('unsold-q-item'),
+        series: 'QUICK', ticket_range: `Quick Qty: ${qty}`, qty, price_raw: qty * activeUnsoldSetPrice, is_quick: true, mlot_id: String(currentMlotId)
+    }]);
+    if (error) return alert("Error: " + error.message);
+    alert("Quick unsold request submitted!");
+    $('form-unsold-quick').reset(); $('unsold-q-date').value = getISODateString(); updatePendingUnsoldBadge();
+}
 
-    const quickEntry = { date: formatToDBDate(document.getElementById('unsold-q-date').value || getISODateString()), code, name: document.getElementById('unsold-q-seller-name').value, item: document.getElementById('unsold-q-item').value, series: 'QUICK', ticket_range: `Quick Qty: ${qty}`, qty, price_raw: qty * activeUnsoldSetPrice, is_quick: true, mlot_id: currentMlotId };
-    const { error } = await _supabase.from('pending_unsold').insert([quickEntry]);
-    if (error) alert("Error: " + error.message);
-    else {
-        alert("Quick unsold request submitted for verification!");
-        document.getElementById('form-unsold-quick').reset();
-        document.getElementById('unsold-q-date').value = getISODateString();
-        updatePendingUnsoldBadge();
+async function submitSellerUnsold(e) {
+    e.preventDefault();
+    const grp = val('s-unsold-group').toUpperCase(), from = val('s-unsold-from'), date = formatToDBDate(val('s-unsold-date') || getISODateString());
+    const calc = parseRangeQuantity(val('s-unsold-series'), from, val('s-unsold-to'));
+    if (calc.error) return alert("Invalid range.");
+    const range = formatTicketRangeString(grp, parseInt(from), calc.actualToVal);
+    if (!await validateSellerPurchasedTickets(currentMlotId, currentSellerCode, val('s-unsold-item'), date, range)) {
+        return alert("Prohibited! You can only return tickets purchased from your MLOT user.");
     }
+    const { data } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
+    await _supabase.from('pending_unsold').insert([{
+        date, code: currentSellerCode, name: data?.name || currentSellerCode, item: val('s-unsold-item'),
+        series: val('s-unsold-series'), ticket_range: range, qty: calc.qty, price_raw: calc.qty * activeSellerUnsoldSetPrice, mlot_id: currentMlotId
+    }]);
+    alert("Unsold tickets sent for verification!");
+    $('form-seller-unsold').reset(); $('s-unsold-date').value = getISODateString();
+    updatePendingUnsoldBadge(); openSellerAccountHome();
 }
 
-// ================= SELLER UNSOLD ENTRY =================
-function switchSellerUnsoldMode(mode) {
-    document.getElementById('s-unsold-tab-detailed').className = `flex-1 py-2 text-xs font-bold rounded-lg ${mode === 'detailed' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600'}`;
-    document.getElementById('s-unsold-tab-quick').className = `flex-1 py-2 text-xs font-bold rounded-lg ${mode === 'quick' ? 'bg-orange-600 text-white shadow' : 'text-slate-600'}`;
-    document.getElementById('s-container-unsold-detailed').classList.toggle('hidden', mode !== 'detailed');
-    document.getElementById('s-container-unsold-quick').classList.toggle('hidden', mode !== 'quick');
+async function submitSellerUnsoldQuickEntry(e) {
+    e.preventDefault();
+    const qty = parseInt(val('s-unsold-q-qty')) || 0;
+    if (qty <= 0) return alert("Enter valid quantity.");
+    const { data } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
+    await _supabase.from('pending_unsold').insert([{
+        date: formatToDBDate(val('s-unsold-q-date') || getISODateString()), code: currentSellerCode, name: data?.name || currentSellerCode,
+        item: val('s-unsold-q-item'), series: 'QUICK', ticket_range: `Quick Qty: ${qty}`, qty, price_raw: qty * activeSellerUnsoldSetPrice, is_quick: true, mlot_id: currentMlotId
+    }]);
+    alert("Quick unsold request sent to MLOT user!");
+    $('form-seller-unsold-quick').reset(); $('s-unsold-q-date').value = getISODateString(); openSellerAccountHome();
 }
 
-function onSellerUnsoldItemChange() {
-    const item = document.getElementById('s-unsold-item').value;
-    const seriesSelect = document.getElementById('s-unsold-series');
-    seriesSelect.innerHTML = '';
-    (seriesOptionsMap[item] || []).forEach(s => seriesSelect.appendChild(new Option(s, s)));
-    calculateSellerUnsoldPrice();
-}
-
-function calculateSellerUnsoldPrice() {
-    const series = document.getElementById('s-unsold-series').value;
-    const fromStr = document.getElementById('s-unsold-from').value.trim();
-    const toStr = document.getElementById('s-unsold-to').value.trim();
-    const calc = parseRangeQuantity(series, fromStr, toStr);
-    document.getElementById('s-unsold-qty').value = calc.qty || 0;
-    document.getElementById('s-unsold-price').value = `₹${((calc.qty || 0) * activeSellerUnsoldSetPrice).toFixed(2)}`;
-}
-
-async function submitSellerUnsold(event) {
-    event.preventDefault();
-    const date = formatToDBDate(document.getElementById('s-unsold-date').value || getISODateString());
-    const item = document.getElementById('s-unsold-item').value;
-    const series = document.getElementById('s-unsold-series').value;
-    const group = document.getElementById('s-unsold-group').value.trim().toUpperCase();
-    const fromStr = document.getElementById('s-unsold-from').value.trim();
-    const toStr = document.getElementById('s-unsold-to').value.trim();
-
-    const calc = parseRangeQuantity(series, fromStr, toStr);
-    if (calc.error) { alert("Invalid range."); return; }
-
-    let ticketRangeStr = formatTicketRangeString(group, parseInt(fromStr), calc.actualToVal);
-    let isValid = await validateSellerPurchasedTickets(currentMlotId, currentSellerCode, item, date, ticketRangeStr);
-    if (!isValid) { alert("Prohibited! You can only return tickets purchased from your MLOT user."); return; }
-
-    const { data: sData } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
-    const pendingEntry = { date, code: currentSellerCode, name: sData ? sData.name : currentSellerCode, item, series, ticket_range: ticketRangeStr, qty: calc.qty, price_raw: calc.qty * activeSellerUnsoldSetPrice, mlot_id: currentMlotId };
-
-    const { error } = await _supabase.from('pending_unsold').insert([pendingEntry]);
-    if(error) alert("Error: " + error.message);
-    else {
-        alert("Unsold tickets sent to Mlot User for verification!");
-        document.getElementById('form-seller-unsold').reset();
-        document.getElementById('s-unsold-date').value = getISODateString();
-        updatePendingUnsoldBadge();
-        openSellerAccountHome();
-    }
-}
-
-async function submitSellerUnsoldQuickEntry(event) {
-    event.preventDefault();
-    const qty = parseInt(document.getElementById('s-unsold-q-qty').value) || 0;
-    if (qty <= 0) { alert("Enter valid quantity."); return; }
-
-    const { data: sData } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
-    const pendingEntry = { date: formatToDBDate(document.getElementById('s-unsold-q-date').value || getISODateString()), code: currentSellerCode, name: sData ? sData.name : currentSellerCode, item: document.getElementById('s-unsold-q-item').value, series: 'QUICK', ticket_range: `Quick Qty: ${qty}`, qty, price_raw: qty * activeSellerUnsoldSetPrice, is_quick: true, mlot_id: currentMlotId };
-
-    const { error } = await _supabase.from('pending_unsold').insert([pendingEntry]);
-    if (error) alert("Error: " + error.message);
-    else {
-        alert("Quick unsold request sent to MLOT user successfully!");
-        document.getElementById('form-seller-unsold-quick').reset();
-        document.getElementById('s-unsold-q-date').value = getISODateString();
-        openSellerAccountHome();
-    }
-}
-
-// ================= GENERAL CRUD & MISC =================
-function openAddSellerPage() {
-    openSubPage('page-add-seller');
-    document.getElementById('seller-userid').value = currentMlotId || '';
-    calculateAddSellerPrice();
-}
-
+// --- MASTER DIRECTORY, CARDS & REPORTS ---
+function openAddSellerPage() { openSubPage('page-add-seller'); $('seller-userid').value = currentMlotId || ''; calculateAddSellerPrice(); }
 function calculateAddSellerPrice() {
-    const totalPrice = (parseFloat(document.getElementById('seller-qty').value) || 1) * (parseFloat(document.getElementById('seller-set-price').value) || 0);
-    document.getElementById('calculated-total-display').innerText = `₹${totalPrice.toFixed(2)}`;
-    return totalPrice;
+    const total = (parseFloat(val('seller-qty')) || 1) * (parseFloat(val('seller-set-price')) || 0);
+    $('calculated-total-display').innerText = fmtCurr(total);
+    return total;
 }
-
-function previewSeller(event) {
-    event.preventDefault();
-    tempSellerData = {
-        name: document.getElementById('seller-name').value.trim(),
-        code: document.getElementById('seller-code').value.trim(),
-        mob: document.getElementById('seller-mob').value.trim(),
-        area: document.getElementById('seller-area').value.trim(),
-        userid: document.getElementById('seller-userid').value.trim(),
-        previousDue: (parseFloat(document.getElementById('seller-prev-due').value) || 0).toFixed(2),
-        setPrice: (parseFloat(document.getElementById('seller-set-price').value) || 0).toFixed(2),
-        totalPrice: calculateAddSellerPrice()
-    };
-    document.getElementById('v-name').innerText = tempSellerData.name;
-    document.getElementById('v-code').innerText = tempSellerData.code;
-    document.getElementById('v-mob').innerText = tempSellerData.mob;
-    document.getElementById('v-area').innerText = tempSellerData.area;
-    document.getElementById('v-userid').innerText = tempSellerData.userid;
-    document.getElementById('v-prevdue').innerText = `₹${tempSellerData.previousDue}`;
-    document.getElementById('v-setprice').innerText = `₹${tempSellerData.setPrice} per item`;
-    document.getElementById('v-qty').innerText = "1";
-    document.getElementById('v-price').innerText = `₹${tempSellerData.totalPrice.toFixed(2)}`;
+function previewSeller(e) {
+    e.preventDefault();
+    tempSellerData = { name: val('seller-name'), code: val('seller-code'), mob: val('seller-mob'), area: val('seller-area'), userid: val('seller-userid'), previousDue: (parseFloat(val('seller-prev-due')) || 0).toFixed(2), setPrice: (parseFloat(val('seller-set-price')) || 0).toFixed(2), totalPrice: calculateAddSellerPrice() };
+    Object.keys(tempSellerData).forEach(k => { if ($(`v-${k.toLowerCase()}`)) $(`v-${k.toLowerCase()}`).innerText = tempSellerData[k]; });
+    $('v-prevdue').innerText = fmtCurr(tempSellerData.previousDue); $('v-setprice').innerText = `₹${tempSellerData.setPrice} per item`; $('v-price').innerText = fmtCurr(tempSellerData.totalPrice);
     toggleModal('verify-modal', true);
 }
-
-function closeModal() { toggleModal('verify-modal', false); }
-
+const closeModal = () => toggleModal('verify-modal', false);
 async function finalSubmitSeller() {
     closeModal();
     const { error } = await _supabase.from('sellers').insert([{ code: tempSellerData.code, name: tempSellerData.name, phone: tempSellerData.mob, area: tempSellerData.area, set_price: parseFloat(tempSellerData.setPrice), previous_due: parseFloat(tempSellerData.previousDue), today_payment: 0.00, date_payments: {}, mlot_id: currentMlotId }]);
     if (error) alert("Error: " + error.message);
-    else { alert("Seller created successfully!"); document.getElementById('form-add-seller').reset(); switchTab('sale'); }
+    else { alert("Seller created successfully!"); $('form-add-seller').reset(); switchTab('sale'); }
 }
 
 async function renderMasterAndSaleTables() {
-    const saleDateFilter = formatToDBDate(document.getElementById('sale-page-filter-date').value || getISODateString());
-    const { data: sellers } = await _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId);
-    const { data: sales } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId);
-    const { data: unsold } = await _supabase.from('unsold_records').select('*').eq('mlot_id', currentMlotId);
-    const todayStr = formatToDBDate(getISODateString());
-
-    const masterList = document.getElementById('master-seller-list');
-    const saleBody = document.getElementById('sale-table-body');
-    if (masterList) masterList.innerHTML = ''; if (saleBody) saleBody.innerHTML = '';
-
-    if (!sellers || sellers.length === 0) {
-        if (masterList) masterList.innerHTML = `<div class="p-4 bg-white rounded-2xl text-center text-xs text-slate-400">No sellers registered.</div>`;
-        if (saleBody) saleBody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-400">No records available.</td></tr>`;
+    const filter = formatToDBDate(val('sale-page-filter-date') || getISODateString()), today = formatToDBDate(getISODateString());
+    const [sel, sales, unsold] = await Promise.all(['sellers', 'sales_records', 'unsold_records'].map(t => _supabase.from(t).select('*').eq('mlot_id', currentMlotId)));
+    const mList = $('master-seller-list'), sBody = $('sale-table-body');
+    if (mList) mList.innerHTML = ''; if (sBody) sBody.innerHTML = '';
+    if (!sel.data?.length) {
+        if (mList) mList.innerHTML = `<div class="p-4 bg-white rounded-2xl text-center text-xs text-slate-400">No sellers registered.</div>`;
+        if (sBody) sBody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-400">No records.</td></tr>`;
         return;
     }
-
-    sellers.forEach((s, idx) => {
-        const slNo = String(idx + 1).padStart(2, '0');
-        const sSales = (sales || []).filter(t => t.code === s.code);
-        const sUnsold = (unsold || []).filter(t => t.code === s.code);
-        const todayDue = sSales.filter(t => (t.date || todayStr) === todayStr).reduce((a, c) => a + c.price_raw, 0) - sUnsold.filter(t => (t.date || todayStr) === todayStr).reduce((a, c) => a + c.price_raw, 0);
-        const totalBalance = (s.previous_due || 0) + todayDue - (s.today_payment || 0);
-
-        if (masterList) {
-            masterList.innerHTML += `<div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between"><div class="flex items-center space-x-3 cursor-pointer" onclick="openSellerDetailModal('${s.code}')"><div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">${slNo}</div><div><h4 class="text-xs font-bold text-slate-800">${s.name} <span class="text-[10px] text-indigo-600 font-normal">#${s.code}</span></h4><p class="text-[10px] text-slate-500">Total Balance: <span class="font-bold text-red-600">₹${totalBalance.toFixed(2)}</span></p></div></div><div class="flex items-center space-x-2"><a href="tel:${s.phone || ''}" class="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xs"><i class="fa-solid fa-phone"></i></a><a href="https://wa.me/${s.phone || ''}" target="_blank" class="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs"><i class="fa-brands fa-whatsapp"></i></a></div></div>`;
+    sel.data.forEach((s, idx) => {
+        const sl = String(idx + 1).padStart(2, '0');
+        const sS = (sales.data || []).filter(t => t.code === s.code), sU = (unsold.data || []).filter(t => t.code === s.code);
+        const tDue = sS.filter(t => t.date === today).reduce((a, c) => a + c.price_raw, 0) - sU.filter(t => t.date === today).reduce((a, c) => a + c.price_raw, 0);
+        const bal = (s.previous_due || 0) + tDue - (s.today_payment || 0);
+        if (mList) {
+            mList.innerHTML += `<div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between"><div class="flex items-center space-x-3 cursor-pointer" onclick="openSellerDetailModal('${s.code}')"><div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">${sl}</div><div><h4 class="text-xs font-bold text-slate-800">${s.name} <span class="text-[10px] text-indigo-600 font-normal">#${s.code}</span></h4><p class="text-[10px] text-slate-500">Total Balance: <span class="font-bold text-red-600">${fmtCurr(bal)}</span></p></div></div><div class="flex items-center space-x-2"><a href="tel:${s.phone || ''}" class="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xs"><i class="fa-solid fa-phone"></i></a><a href="https://wa.me/${s.phone || ''}" target="_blank" class="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs"><i class="fa-brands fa-whatsapp"></i></a></div></div>`;
         }
-        if (saleBody) {
-            const dSales = sSales.filter(t => (t.date || todayStr) === saleDateFilter);
-            const dUnsold = sUnsold.filter(t => (t.date || todayStr) === saleDateFilter);
-            let pQty = dSales.reduce((a, c) => a + c.qty, 0), uQty = dUnsold.reduce((a, c) => a + c.qty, 0);
-            saleBody.innerHTML += `<tr class="hover:bg-slate-50 border-b border-slate-100"><td class="p-3 text-slate-400">${slNo}</td><td class="p-3 font-semibold text-indigo-600">${s.code}</td><td class="p-3 font-bold text-slate-800">${s.name}</td><td class="p-3 text-purple-600 font-bold">${pQty}</td><td class="p-3 text-emerald-600 font-bold">${pQty - uQty}</td><td class="p-3 text-amber-600 font-bold">${uQty}</td><td class="p-3 font-bold text-slate-800">₹${(dSales.reduce((a, c) => a + c.price_raw, 0) - dUnsold.reduce((a, c) => a + c.price_raw, 0)).toFixed(2)}</td><td class="p-3 font-extrabold text-red-600">₹${totalBalance.toFixed(2)}</td></tr>`;
+        if (sBody) {
+            const dS = sS.filter(t => t.date === filter), dU = sU.filter(t => t.date === filter);
+            const pQ = dS.reduce((a, c) => a + c.qty, 0), uQ = dU.reduce((a, c) => a + c.qty, 0);
+            sBody.innerHTML += `<tr class="hover:bg-slate-50 border-b border-slate-100"><td class="p-3 text-slate-400">${sl}</td><td class="p-3 font-semibold text-indigo-600">${s.code}</td><td class="p-3 font-bold text-slate-800">${s.name}</td><td class="p-3 text-purple-600 font-bold">${pQ}</td><td class="p-3 text-emerald-600 font-bold">${pQ - uQ}</td><td class="p-3 text-amber-600 font-bold">${uQ}</td><td class="p-3 font-bold text-slate-800">${fmtCurr(dS.reduce((a, c) => a + c.price_raw, 0) - dU.reduce((a, c) => a + c.price_raw, 0))}</td><td class="p-3 font-extrabold text-red-600">${fmtCurr(bal)}</td></tr>`;
         }
     });
 }
 
-async function openSellerDetailModal(code) {
-    currentlyViewingSellerCode = code; isEditingSeller = false;
-    renderSellerDetailModalContent();
-    toggleModal('seller-detail-modal', true);
-}
-
-function closeSellerDetailModal() { isEditingSeller = false; toggleModal('seller-detail-modal', false); }
+async function openSellerDetailModal(code) { currentlyViewingSellerCode = code; isEditingSeller = false; renderSellerDetailModalContent(); toggleModal('seller-detail-modal', true); }
+const closeSellerDetailModal = () => { isEditingSeller = false; toggleModal('seller-detail-modal', false); };
 
 async function renderSellerDetailModalContent() {
     const { data: s } = await _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId).eq('code', currentlyViewingSellerCode).single();
     if (!s) return;
-    const { data: sales } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId).eq('code', currentlyViewingSellerCode);
-    const { data: unsold } = await _supabase.from('unsold_records').select('*').eq('mlot_id', currentMlotId).eq('code', currentlyViewingSellerCode);
-    const todayStr = formatToDBDate(getISODateString());
-    let totalBalance = (s.previous_due || 0) + ((sales || []).filter(t => (t.date || todayStr) === todayStr).reduce((a, c) => a + c.price_raw, 0) - (unsold || []).filter(t => (t.date || todayStr) === todayStr).reduce((a, c) => a + c.price_raw, 0)) - (s.today_payment || 0);
-
-    const contentDiv = document.getElementById('seller-detail-content');
-    const editBtn = document.getElementById('seller-detail-edit-btn');
-
-    if (!isEditingSeller) {
-        editBtn.innerText = "Edit Details";
-        contentDiv.innerHTML = `<div class="flex justify-between"><span class="text-slate-500">Code:</span> <span class="font-bold text-indigo-600">${currentlyViewingSellerCode}</span></div><div class="flex justify-between"><span class="text-slate-500">Name:</span> <span class="font-bold text-slate-800">${s.name}</span></div><div class="flex justify-between"><span class="text-slate-500">Balance:</span> <span class="font-extrabold text-red-600">₹${totalBalance.toFixed(2)}</span></div><div class="flex justify-between"><span class="text-slate-500">Mobile:</span> <span class="font-bold text-slate-800">${s.phone || 'N/A'}</span></div><div class="flex justify-between"><span class="text-slate-500">Area:</span> <span class="font-bold text-slate-800">${s.area || 'N/A'}</span></div>`;
-    } else {
-        editBtn.innerText = "Save Changes";
-        contentDiv.innerHTML = `<div class="space-y-2"><div><label class="text-[10px] font-bold">Name</label><input type="text" id="edit-s-name" value="${s.name}" class="w-full px-2 py-1.5 border rounded text-xs"></div><div><label class="text-[10px] font-bold">Mobile</label><input type="tel" id="edit-s-mob" value="${s.phone || ''}" class="w-full px-2 py-1.5 border rounded text-xs"></div><div><label class="text-[10px] font-bold">Area</label><input type="text" id="edit-s-area" value="${s.area || ''}" class="w-full px-2 py-1.5 border rounded text-xs"></div></div>`;
-    }
+    const [sales, unsold] = await Promise.all(['sales_records', 'unsold_records'].map(t => _supabase.from(t).select('*').eq('mlot_id', currentMlotId).eq('code', currentlyViewingSellerCode)));
+    const today = formatToDBDate(getISODateString());
+    const bal = (s.previous_due || 0) + ((sales.data || []).filter(t => t.date === today).reduce((a, c) => a + c.price_raw, 0) - (unsold.data || []).filter(t => t.date === today).reduce((a, c) => a + c.price_raw, 0)) - (s.today_payment || 0);
+    const div = $('seller-detail-content'), btn = $('seller-detail-edit-btn');
+    btn.innerText = isEditingSeller ? "Save Changes" : "Edit Details";
+    div.innerHTML = isEditingSeller
+        ? `<div class="space-y-2"><div><label class="text-[10px] font-bold">Name</label><input type="text" id="edit-s-name" value="${s.name}" class="w-full px-2 py-1.5 border rounded text-xs"></div><div><label class="text-[10px] font-bold">Mobile</label><input type="tel" id="edit-s-mob" value="${s.phone || ''}" class="w-full px-2 py-1.5 border rounded text-xs"></div><div><label class="text-[10px] font-bold">Area</label><input type="text" id="edit-s-area" value="${s.area || ''}" class="w-full px-2 py-1.5 border rounded text-xs"></div></div>`
+        : `<div class="flex justify-between"><span class="text-slate-500">Code:</span> <span class="font-bold text-indigo-600">${currentlyViewingSellerCode}</span></div><div class="flex justify-between"><span class="text-slate-500">Name:</span> <span class="font-bold text-slate-800">${s.name}</span></div><div class="flex justify-between"><span class="text-slate-500">Balance:</span> <span class="font-extrabold text-red-600">${fmtCurr(bal)}</span></div><div class="flex justify-between"><span class="text-slate-500">Mobile:</span> <span class="font-bold text-slate-800">${s.phone || 'N/A'}</span></div><div class="flex justify-between"><span class="text-slate-500">Area:</span> <span class="font-bold text-slate-800">${s.area || 'N/A'}</span></div>`;
 }
 
 async function toggleEditSellerMode() {
     if (!isEditingSeller) { isEditingSeller = true; renderSellerDetailModalContent(); }
     else {
-        await _supabase.from('sellers').update({ name: document.getElementById('edit-s-name').value.trim(), phone: document.getElementById('edit-s-mob').value.trim(), area: document.getElementById('edit-s-area').value.trim() }).eq('mlot_id', currentMlotId).eq('code', currentlyViewingSellerCode);
-        isEditingSeller = false; alert("Updated successfully!"); renderSellerDetailModalContent(); renderMasterAndSaleTables();
+        await _supabase.from('sellers').update({ name: val('edit-s-name'), phone: val('edit-s-mob'), area: val('edit-s-area') }).eq('mlot_id', currentMlotId).eq('code', currentlyViewingSellerCode);
+        isEditingSeller = false; alert("Updated!"); renderSellerDetailModalContent(); renderMasterAndSaleTables();
     }
 }
 
+// --- SALE REPORT MODAL & PDF / WHATSAPP EXPORT ---
 async function openSaleReportModal() {
-    const todayStr = getISODateString();
-    document.getElementById('report-from-date').value = todayStr;
-    document.getElementById('report-to-date').value = todayStr;
-    const select = document.getElementById('report-filter-seller');
-    const { data: sellers } = await _supabase.from('sellers').select('code, name').eq('mlot_id', currentMlotId);
-    select.innerHTML = '<option value="">All Sellers (General Report)</option>';
-    (sellers || []).forEach(s => select.appendChild(new Option(`${s.code} - ${s.name}`, s.code)));
-    filterSaleReport();
-    toggleModal('sale-report-modal', true);
+    const today = getISODateString();
+    $('report-from-date').value = today; $('report-to-date').value = today;
+    const { data } = await _supabase.from('sellers').select('code, name').eq('mlot_id', currentMlotId);
+    $('report-filter-seller').innerHTML = '<option value="">All Sellers (General Report)</option>' + (data || []).map(s => `<option value="${s.code}">${s.code} - ${s.name}</option>`).join('');
+    filterSaleReport(); toggleModal('sale-report-modal', true);
 }
-
-function closeSaleReportModal() { toggleModal('sale-report-modal', false); }
+const closeSaleReportModal = () => toggleModal('sale-report-modal', false);
 
 async function filterSaleReport() {
-    const f = document.getElementById('report-from-date').value;
-    const to = document.getElementById('report-to-date').value;
-    const selectedCode = document.getElementById('report-filter-seller').value;
-    const { data: sales } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId);
-    const tbody = document.getElementById('report-table-tbody');
-    const tfoot = document.getElementById('report-table-tfoot');
-    tbody.innerHTML = '';
-
-    let fromComp = convertDateToComparable(f), toComp = convertDateToComparable(to);
-    let filtered = (sales || []).filter(t => {
-        let itemComp = convertDateToComparable(t.date || formatToDBDate(getISODateString()));
-        let matchDate = itemComp >= fromComp && itemComp <= toComp;
-        let matchCode = selectedCode ? t.code === selectedCode : true;
-        return matchDate && matchCode;
+    const fComp = convertDateToComparable(val('report-from-date')), toComp = convertDateToComparable(val('report-to-date')), selCode = val('report-filter-seller');
+    const { data } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId);
+    const tbody = $('report-table-tbody'), tfoot = $('report-table-tfoot');
+    const filtered = (data || []).filter(t => {
+        const c = convertDateToComparable(t.date);
+        return c >= fComp && c <= toComp && (!selCode || t.code === selCode);
     });
-
     let q = 0, p = 0;
-    if (filtered.length === 0) { tbody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-400">No records found.</td></tr>`; } 
-    else {
-        filtered.forEach(t => {
-            q += t.qty; p += t.price_raw;
-            tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2 text-[10px]">${t.date}</td><td class="p-2 font-semibold text-indigo-600">${t.code}</td><td class="p-2">${t.name}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-emerald-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${t.price_raw.toFixed(2)}</td></tr>`;
-        });
-    }
-    tfoot.innerHTML = `<tr><td colspan="6" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
+    tbody.innerHTML = filtered.length ? filtered.map(t => {
+        q += t.qty; p += t.price_raw;
+        return `<tr class="border-b border-slate-100"><td class="p-2 text-[10px]">${t.date}</td><td class="p-2 font-semibold text-indigo-600">${t.code}</td><td class="p-2">${t.name}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-emerald-600 font-bold">${t.qty}</td><td class="p-2 font-bold">${fmtCurr(t.price_raw)}</td></tr>`;
+    }).join('') : `<tr><td colspan="8" class="p-4 text-center text-slate-400">No records.</td></tr>`;
+    tfoot.innerHTML = `<tr><td colspan="6" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">${fmtCurr(p)}</td></tr>`;
 }
 
-// Generates Sale Report PDF Document Object & Metadata
 async function generateSaleReportPDFDoc() {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    const f = document.getElementById('report-from-date').value || getISODateString();
-    const to = document.getElementById('report-to-date').value || getISODateString();
-    const selectedCode = document.getElementById('report-filter-seller').value;
-    const { data: mlotData } = await _supabase.from('mlot_users').select('*').eq('mlot_id', currentMlotId).maybeSingle();
-
-    let sellerNameStr = "";
-    let sellerPhoneStr = "";
-
-    if (selectedCode) {
-        const { data: sData } = await _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId).eq('code', selectedCode).maybeSingle();
-        if (sData) {
-            sellerNameStr = sData.name;
-            sellerPhoneStr = sData.phone || "";
-        }
-    }
-
-    doc.setFontSize(9);
-    doc.text(`Generated Date: ${formatToDBDate(getISODateString())}`, 14, 15);
-    doc.setFontSize(13);
-    doc.text(selectedCode ? `Seller Name: ${sellerNameStr} (${selectedCode})` : `${mlotData?.business_name || 'MLOT'} - Sale Report`, 105, 15, { align: 'center' });
-    doc.setFontSize(9);
-    if (sellerPhoneStr) doc.text(`Contact: ${sellerPhoneStr}`, 105, 21, { align: 'center' });
+    const { jsPDF } = window.jspdf, doc = new jsPDF();
+    const f = val('report-from-date') || getISODateString(), to = val('report-to-date') || getISODateString(), code = val('report-filter-seller');
+    const [mlot, sData] = await Promise.all([
+        _supabase.from('mlot_users').select('*').eq('mlot_id', currentMlotId).maybeSingle(),
+        code ? _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId).eq('code', code).maybeSingle() : Promise.resolve({ data: null })
+    ]);
+    const sName = sData.data?.name || "", sPhone = sData.data?.phone || mlot.data?.mobile || "";
+    doc.setFontSize(9); doc.text(`Generated Date: ${formatToDBDate(getISODateString())}`, 14, 15);
+    doc.setFontSize(13); doc.text(code ? `Seller Name: ${sName} (${code})` : `${mlot.data?.business_name || 'MLOT'} - Sale Report`, 105, 15, { align: 'center' });
+    doc.setFontSize(9); if (sPhone) doc.text(`Contact: ${sPhone}`, 105, 21, { align: 'center' });
     doc.text(`Report Period: ${formatToDBDate(f)} to ${formatToDBDate(to)}`, 14, 27);
 
-    const { data: sales } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId);
-    let fromComp = convertDateToComparable(f), toComp = convertDateToComparable(to);
-    let filtered = (sales || []).filter(t => {
-        let itemComp = convertDateToComparable(t.date);
-        return itemComp >= fromComp && itemComp <= toComp && (selectedCode ? t.code === selectedCode : true);
-    });
+    const { data } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId);
+    const fComp = convertDateToComparable(f), toComp = convertDateToComparable(to);
+    const filtered = (data || []).filter(t => { const c = convertDateToComparable(t.date); return c >= fComp && c <= toComp && (!code || t.code === code); });
 
-    let tableRows = []; let totalQ = 0, totalP = 0;
-    filtered.forEach((t, index) => {
+    let totalQ = 0, totalP = 0;
+    const rows = filtered.map((t, idx) => {
         totalQ += t.qty; totalP += t.price_raw;
-        tableRows.push([index + 1, t.date, t.code, t.name, t.item, t.series, t.ticket_range, t.qty, `₹${t.price_raw.toFixed(2)}`]);
+        return [idx + 1, t.date, t.code, t.name, t.item, t.series, t.ticket_range, t.qty, fmtCurr(t.price_raw)];
     });
-
     doc.autoTable({
-        startY: 32,
-        head: [['Sl', 'Date', 'Code', 'Name', 'Item', 'Series', 'Range', 'Qty', 'Price']],
-        body: tableRows,
-        foot: [['', '', '', '', '', '', 'Total:', totalQ, `₹${totalP.toFixed(2)}`]],
-        theme: 'grid',
-        headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold' },
-        styles: { fontSize: 8, cellPadding: 2 }
+        startY: 32, head: [['Sl', 'Date', 'Code', 'Name', 'Item', 'Series', 'Range', 'Qty', 'Price']],
+        body: rows, foot: [['', '', '', '', '', '', 'Total:', totalQ, fmtCurr(totalP)]],
+        theme: 'grid', headStyles: { fillColor: [79, 70, 229], fontStyle: 'bold' }, styles: { fontSize: 8, cellPadding: 2 }
     });
-
-    return { doc, selectedCode, sellerName: sellerNameStr, sellerPhone: sellerPhoneStr };
+    return { doc, code, sName, sPhone };
 }
 
-async function downloadSaleReportPDF() {
-    const reportData = await generateSaleReportPDFDoc();
-    const fileName = reportData.selectedCode ? `SaleReport_${reportData.selectedCode}.pdf` : `SaleReport_General.pdf`;
-    openPDFDirectly(reportData.doc, fileName);
-}
+const downloadSaleReportPDF = async () => { const rep = await generateSaleReportPDFDoc(); openPDFDirectly(rep.doc, rep.code ? `SaleReport_${rep.code}.pdf` : `SaleReport_General.pdf`); };
 
 async function sendSaleReportToWhatsApp() {
-    const reportData = await generateSaleReportPDFDoc();
-    if (!reportData.selectedCode) {
-        alert("Please select a specific Seller Code from the dropdown to send via WhatsApp!");
-        return;
-    }
-    if (!reportData.sellerPhone) {
-        alert(`No mobile number registered for seller ${reportData.selectedCode}.`);
-        return;
-    }
-
+    const rep = await generateSaleReportPDFDoc();
+    if (!rep.code) return alert("Please select a specific Seller Code!");
+    if (!rep.sPhone) return alert(`No phone found for seller ${rep.code}.`);
     try {
-        const dataUri = reportData.doc.output('datauristring');
-        const pdfBase64 = dataUri.split(',')[1];
-        const fileName = `SaleReport_${reportData.selectedCode}.pdf`;
-
-        if (window.AndroidBridge && typeof window.AndroidBridge.sharePDFToWhatsApp === 'function') {
-            window.AndroidBridge.sharePDFToWhatsApp(pdfBase64, fileName, reportData.sellerPhone);
+        const base64 = rep.doc.output('datauristring').split(',')[1];
+        if (window.AndroidBridge?.sharePDFToWhatsApp) {
+            window.AndroidBridge.sharePDFToWhatsApp(base64, `SaleReport_${rep.code}.pdf`, rep.sPhone);
         } else {
-            const cleanPhone = reportData.sellerPhone.replace(/[^0-9]/g, '');
-            const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
-            window.open(`https://wa.me/${phoneWithCode}?text=Hello%20${encodeURIComponent(reportData.sellerName)},%20please%20find%20your%20latest%20Sale%20Report.`, '_blank');
+            const clean = rep.sPhone.replace(/[^0-9]/g, '');
+            window.open(`https://wa.me/${clean.length === 10 ? '91' + clean : clean}?text=Hello%20${encodeURIComponent(rep.sName)},%20please%20find%20your%20Sale%20Report.`, '_blank');
         }
-    } catch (e) {
-        alert("WhatsApp share error: " + e.message);
-    }
+    } catch (e) { alert("WhatsApp share error: " + e.message); }
 }
 
-// ================= TRACKERS & VERIFICATIONS (WITH REJECT) =================
-function openSoldTicketPage() {
-    openSubPage('page-sold-ticket');
-    document.getElementById('sold-filter-date').value = getISODateString();
-    renderSoldTicketSellers();
-}
-
-async function renderSoldTicketSellers() {
-    const dateFilter = formatToDBDate(document.getElementById('sold-filter-date').value);
-    const grid = document.getElementById('sold-sellers-grid');
-    grid.innerHTML = '';
-    const { data: sales } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId).eq('date', dateFilter);
-    if (!sales || sales.length === 0) { grid.innerHTML = `<div class="col-span-3 text-center p-4 text-xs text-slate-400">No sold tickets found.</div>`; return; }
-
-    let summary = {};
-    sales.forEach(s => {
-        if (!summary[s.code]) summary[s.code] = { name: s.name, qty: 0, amt: 0 };
-        summary[s.code].qty += s.qty; summary[s.code].amt += s.price_raw;
+// --- SUMMARY GRIDS & VERIFICATIONS ---
+async function renderSellerCards(table, dateInputId, gridId, onClickFn) {
+    const date = formatToDBDate(val(dateInputId));
+    let q = _supabase.from(table).select('*').eq('mlot_id', currentMlotId);
+    if (date) q = q.eq('date', date);
+    const { data } = await q, grid = $(gridId); grid.innerHTML = '';
+    if (!data?.length) return grid.innerHTML = `<div class="col-span-3 text-center p-4 text-xs text-slate-400">No records found.</div>`;
+    const sum = {};
+    data.forEach(s => {
+        sum[s.code] = sum[s.code] || { name: s.name, qty: 0, amt: 0 };
+        sum[s.code].qty += s.qty; sum[s.code].amt += s.price_raw;
     });
-
-    Object.keys(summary).forEach(code => {
-        grid.innerHTML += `<div class="bg-emerald-50 p-2.5 rounded-xl border border-emerald-100 flex flex-col items-center justify-center text-center shadow-sm cursor-pointer" onclick="openSellerSoldDetail('${code}', '${dateFilter}')"><span class="text-[10px] font-bold text-emerald-700">${code}</span><span class="text-[9px] text-slate-500 truncate w-full">${summary[code].name}</span><span class="text-xs font-extrabold text-slate-800 mt-1">${summary[code].qty}</span><span class="text-[9px] font-bold text-emerald-600 mt-0.5">₹${summary[code].amt.toFixed(2)}</span></div>`;
-    });
+    grid.innerHTML = Object.keys(sum).map(c => `<div class="bg-emerald-50 p-2.5 rounded-xl border border-emerald-100 flex flex-col items-center text-center shadow-sm cursor-pointer" onclick="${onClickFn}('${c}','${date}')"><span class="text-[10px] font-bold text-emerald-700">${c}</span><span class="text-[9px] text-slate-500 truncate w-full">${sum[c].name}</span><span class="text-xs font-extrabold text-slate-800 mt-1">${sum[c].qty}</span><span class="text-[9px] font-bold text-emerald-600 mt-0.5">${fmtCurr(sum[c].amt)}</span></div>`).join('');
 }
+const openSoldTicketPage = () => { openSubPage('page-sold-ticket'); $('sold-filter-date').value = getISODateString(); renderSoldTicketSellers(); };
+const renderSoldTicketSellers = () => renderSellerCards('sales_records', 'sold-filter-date', 'sold-sellers-grid', 'openSellerSoldDetail');
+const openShowAllUnsoldModal = () => { $('unsold-tracker-filter-date').value = getISODateString(); renderAllUnsoldGrid(); toggleModal('show-all-unsold-modal', true); };
+const closeShowAllUnsoldModal = () => toggleModal('show-all-unsold-modal', false);
+const renderAllUnsoldGrid = () => renderSellerCards('unsold_records', 'unsold-tracker-filter-date', 'unsold-sellers-grid', 'openSellerUnsoldDetail');
 
-async function openSellerSoldDetail(code, date) {
-    const { data } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId).eq('code', code).eq('date', date);
-    const tbody = document.getElementById('seller-detail-tbody');
-    const tfoot = document.getElementById('seller-detail-tfoot');
-    document.getElementById('detail-modal-title').innerText = `Sold Detail: ${code}`;
-    document.getElementById('detail-modal-subtitle').innerText = `Date: ${date}`;
-    tbody.innerHTML = ''; let q = 0, p = 0;
-    (data || []).forEach((t, i) => {
-        q += t.qty; p += t.price_raw;
-        tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2">${i+1}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-emerald-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${t.price_raw.toFixed(2)}</td></tr>`;
-    });
-    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
-    toggleModal('seller-sold-detail-modal', true);
+async function openTicketDetailModal(table, code, date, modalId, titleId, tbodyId, tfootId, isSold) {
+    let q = _supabase.from(table).select('*').eq('mlot_id', currentMlotId).eq('code', code);
+    if (date) q = q.eq('date', date);
+    const { data } = await q;
+    $(titleId).innerText = `${isSold ? 'Sold' : 'Unsold'} Detail: ${code}`;
+    let totQ = 0, totP = 0;
+    $(tbodyId).innerHTML = (data || []).map((t, i) => {
+        totQ += t.qty; totP += t.price_raw;
+        return `<tr class="border-b border-slate-100"><td class="p-2">${i+1}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 ${isSold ? 'text-emerald-600' : 'text-amber-600'} font-bold">${t.qty}</td><td class="p-2 font-bold">${fmtCurr(t.price_raw)}</td></tr>`;
+    }).join('');
+    $(tfootId).innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold ${isSold ? 'text-emerald-600' : 'text-amber-600'}">${totQ}</td><td class="p-2 font-bold text-indigo-600">${fmtCurr(totP)}</td></tr>`;
+    toggleModal(modalId, true);
 }
-
-function closeSellerSoldDetail() { toggleModal('seller-sold-detail-modal', false); }
-
-function openShowAllUnsoldModal() {
-    document.getElementById('unsold-tracker-filter-date').value = getISODateString();
-    renderAllUnsoldGrid();
-    toggleModal('show-all-unsold-modal', true);
-}
-
-function closeShowAllUnsoldModal() { toggleModal('show-all-unsold-modal', false); }
-
-async function renderAllUnsoldGrid() {
-    const dateFilter = formatToDBDate(document.getElementById('unsold-tracker-filter-date').value);
-    const grid = document.getElementById('unsold-sellers-grid');
-    grid.innerHTML = '';
-    let query = _supabase.from('unsold_records').select('*').eq('mlot_id', currentMlotId);
-    if (dateFilter) query = query.eq('date', dateFilter);
-    const { data: unsold } = await query;
-
-    if (!unsold || unsold.length === 0) { grid.innerHTML = `<div class="col-span-3 text-center p-4 text-xs text-slate-400">No unsold returns found.</div>`; return; }
-
-    let summary = {};
-    unsold.forEach(s => {
-        if (!summary[s.code]) summary[s.code] = { name: s.name, qty: 0, amt: 0 };
-        summary[s.code].qty += s.qty; summary[s.code].amt += s.price_raw;
-    });
-
-    Object.keys(summary).forEach(code => {
-        grid.innerHTML += `<div class="bg-amber-50 p-2.5 rounded-xl border border-amber-100 flex flex-col items-center justify-center text-center shadow-sm cursor-pointer" onclick="openSellerUnsoldDetail('${code}', '${dateFilter}')"><span class="text-[10px] font-bold text-amber-700">${code}</span><span class="text-[9px] text-slate-500 truncate w-full">${summary[code].name}</span><span class="text-xs font-extrabold text-slate-800 mt-1">${summary[code].qty}</span><span class="text-[9px] font-bold text-amber-600 mt-0.5">₹${summary[code].amt.toFixed(2)}</span></div>`;
-    });
-}
-
-async function openSellerUnsoldDetail(code, date) {
-    let query = _supabase.from('unsold_records').select('*').eq('mlot_id', currentMlotId).eq('code', code);
-    if (date) query = query.eq('date', date);
-    const { data } = await query;
-    const tbody = document.getElementById('seller-unsold-detail-tbody');
-    const tfoot = document.getElementById('seller-unsold-detail-tfoot');
-    document.getElementById('unsold-detail-modal-title').innerText = `Unsold Detail: ${code}`;
-    tbody.innerHTML = ''; let q = 0, p = 0;
-    (data || []).forEach(t => {
-        q += t.qty; p += t.price_raw;
-        tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2 text-[10px]">${t.date}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-amber-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${t.price_raw.toFixed(2)}</td></tr>`;
-    });
-    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-amber-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
-    toggleModal('seller-unsold-detail-modal', true);
-}
-
-function closeSellerUnsoldDetail() { toggleModal('seller-unsold-detail-modal', false); }
+const openSellerSoldDetail = (c, d) => openTicketDetailModal('sales_records', c, d, 'seller-sold-detail-modal', 'detail-modal-title', 'seller-detail-tbody', 'seller-detail-tfoot', true);
+const closeSellerSoldDetail = () => toggleModal('seller-sold-detail-modal', false);
+const openSellerUnsoldDetail = (c, d) => openTicketDetailModal('unsold_records', c, d, 'seller-unsold-detail-modal', 'unsold-detail-modal-title', 'seller-unsold-detail-tbody', 'seller-unsold-detail-tfoot', false);
+const closeSellerUnsoldDetail = () => toggleModal('seller-unsold-detail-modal', false);
 
 async function updatePendingUnsoldBadge() {
     const { count } = await _supabase.from('pending_unsold').select('*', { count: 'exact', head: true }).eq('mlot_id', currentMlotId);
-    const badge = document.getElementById('pending-unsold-badge');
-    if (badge) badge.innerText = count || 0;
+    if ($('pending-unsold-badge')) $('pending-unsold-badge').innerText = count || 0;
 }
-
 async function openVerifyUnsoldModal() {
     const { data } = await _supabase.from('pending_unsold').select('*').eq('mlot_id', currentMlotId);
-    const container = document.getElementById('verify-unsold-list');
-    container.innerHTML = '';
-
-    if (!data || data.length === 0) {
-        container.innerHTML = `<div class="p-4 text-center text-xs text-slate-400">No pending unsold tickets.</div>`;
-        toggleModal('verify-unsold-modal', true);
-        return;
-    }
-
-    data.forEach((item) => {
-        container.innerHTML += `
-            <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
-                <div>
-                    <span class="font-bold text-indigo-600">${item.code} (${item.name})</span>
-                    <p class="text-[10px] text-slate-500">${item.date} | ${item.item} | ${item.series} | ${item.ticket_range}</p>
-                    <p class="text-[10px] font-bold text-amber-600">Qty: ${item.qty} | Amt: ₹${item.price_raw.toFixed(2)}</p>
-                </div>
-                <div class="flex gap-1">
-                    <button onclick="verifySingleUnsold('${item.id}')" class="px-2.5 py-1.5 bg-emerald-600 text-white rounded-lg font-bold text-[10px]">Verify</button>
-                    <button onclick="rejectSingleUnsold('${item.id}')" class="px-2.5 py-1.5 bg-red-600 text-white rounded-lg font-bold text-[10px]">Reject</button>
-                </div>
-            </div>
-        `;
-    });
+    const box = $('verify-unsold-list'); box.innerHTML = '';
+    if (!data?.length) box.innerHTML = `<div class="p-4 text-center text-xs text-slate-400">No pending unsold tickets.</div>`;
+    else box.innerHTML = data.map(item => `<div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs"><div><span class="font-bold text-indigo-600">${item.code} (${item.name})</span><p class="text-[10px] text-slate-500">${item.date} | ${item.item} | ${item.series} | ${item.ticket_range}</p><p class="text-[10px] font-bold text-amber-600">Qty: ${item.qty} | Amt: ${fmtCurr(item.price_raw)}</p></div><div class="flex gap-1"><button onclick="verifySingleUnsold('${item.id}')" class="px-2.5 py-1.5 bg-emerald-600 text-white rounded-lg font-bold text-[10px]">Verify</button><button onclick="rejectSingleUnsold('${item.id}')" class="px-2.5 py-1.5 bg-red-600 text-white rounded-lg font-bold text-[10px]">Reject</button></div></div>`).join('');
     toggleModal('verify-unsold-modal', true);
 }
-
-function closeVerifyUnsoldModal() { toggleModal('verify-unsold-modal', false); }
-
+const closeVerifyUnsoldModal = () => toggleModal('verify-unsold-modal', false);
 async function verifySingleUnsold(id) {
     const { data: item } = await _supabase.from('pending_unsold').select('*').eq('id', id).single();
     if (!item) return;
-
-    await _supabase.from('unsold_records').insert([{
-        date: item.date, code: item.code, name: item.name, item: item.item,
-        series: item.series, ticket_range: item.ticket_range, qty: item.qty, price_raw: item.price_raw, mlot_id: item.mlot_id
-    }]);
-
+    await _supabase.from('unsold_records').insert([{ date: item.date, code: item.code, name: item.name, item: item.item, series: item.series, ticket_range: item.ticket_range, qty: item.qty, price_raw: item.price_raw, mlot_id: item.mlot_id }]);
     if (item.is_quick) {
-        const { data: seller } = await _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId).eq('code', item.code).single();
-        if (seller) {
-            await _supabase.from('sellers').update({ today_payment: (seller.today_payment || 0) + (item.price_raw || 0) }).eq('mlot_id', currentMlotId).eq('code', item.code);
-        }
+        const { data: s } = await _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId).eq('code', item.code).single();
+        if (s) await _supabase.from('sellers').update({ today_payment: (s.today_payment || 0) + (item.price_raw || 0) }).eq('mlot_id', currentMlotId).eq('code', item.code);
     }
-
     await _supabase.from('pending_unsold').delete().eq('id', id);
-    alert("Unsold ticket verified and officially recorded!");
-    updatePendingUnsoldBadge();
-    openVerifyUnsoldModal();
-    renderMasterAndSaleTables();
+    alert("Unsold verified!"); updatePendingUnsoldBadge(); openVerifyUnsoldModal(); renderMasterAndSaleTables();
 }
-
 async function rejectSingleUnsold(id) {
-    if (!confirm("Are you sure you want to reject this unsold ticket request?")) return;
-    const { error } = await _supabase.from('pending_unsold').delete().eq('id', id);
-    if (error) { alert("Error: " + error.message); } 
-    else { alert("Unsold request rejected!"); updatePendingUnsoldBadge(); openVerifyUnsoldModal(); }
+    if (!confirm("Reject this unsold ticket?")) return;
+    await _supabase.from('pending_unsold').delete().eq('id', id);
+    alert("Rejected!"); updatePendingUnsoldBadge(); openVerifyUnsoldModal();
 }
 
-async function openPaymentHistoryPage() {
-    openSubPage('page-payment-history');
-    renderMlotPaymentHistoryTable();
-}
-
+// --- PAYMENTS & LEDGER ---
+const openPaymentHistoryPage = () => { openSubPage('page-payment-history'); renderMlotPaymentHistoryTable(); };
 async function renderMlotPaymentHistoryTable() {
     const { data } = await _supabase.from('payments').select('*').eq('mlot_id', currentMlotId);
-    const tbody = document.getElementById('mlot-payment-history-tbody');
-    tbody.innerHTML = '';
-    if (!data || data.length === 0) { tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">No payment submissions found.</td></tr>`; return; }
-
-    data.forEach((p) => {
-        let screenshotBtn = p.screenshot ? `<button onclick="viewScreenshot('${p.screenshot}')" class="text-indigo-600 font-bold underline">View</button>` : 'No Image';
-        let actionHtml = p.status === 'Pending' ? `<button onclick="approvePayment('${p.id}', '${p.code}', ${p.paid_amount}, '${p.date}')" class="px-2 py-1 bg-emerald-600 text-white rounded text-[10px] mr-1">Approve</button><button onclick="rejectPayment('${p.id}')" class="px-2 py-1 bg-red-600 text-white rounded text-[10px]">Reject</button>` : `<span class="text-[10px] font-bold px-2 py-0.5 rounded ${p.status === 'Approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}">${p.status}</span>`;
-        tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2.5 text-[10px] text-slate-500">${p.date}</td><td class="p-2.5 font-semibold text-indigo-600">${p.code}</td><td class="p-2.5 font-bold">₹${p.total_due.toFixed(2)}</td><td class="p-2.5 font-bold text-emerald-600">₹${p.paid_amount.toFixed(2)}</td><td class="p-2.5 text-center">${screenshotBtn}</td><td class="p-2.5 text-center">${actionHtml}</td></tr>`;
-    });
+    const tbody = $('mlot-payment-history-tbody');
+    tbody.innerHTML = (data || []).map(p => `<tr class="border-b border-slate-100"><td class="p-2.5 text-[10px] text-slate-500">${p.date}</td><td class="p-2.5 font-semibold text-indigo-600">${p.code}</td><td class="p-2.5 font-bold">${fmtCurr(p.total_due)}</td><td class="p-2.5 font-bold text-emerald-600">${fmtCurr(p.paid_amount)}</td><td class="p-2.5 text-center">${p.screenshot ? `<button onclick="viewScreenshot('${p.screenshot}')" class="text-indigo-600 underline font-bold">View</button>` : 'No Image'}</td><td class="p-2.5 text-center">${p.status === 'Pending' ? `<button onclick="approvePayment('${p.id}','${p.code}',${p.paid_amount},'${p.date}')" class="px-2 py-1 bg-emerald-600 text-white rounded text-[10px] mr-1">Approve</button><button onclick="rejectPayment('${p.id}')" class="px-2 py-1 bg-red-600 text-white rounded text-[10px]">Reject</button>` : `<span class="text-[10px] font-bold px-2 py-0.5 rounded ${p.status === 'Approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}">${p.status}</span>`}</td></tr>`).join('') || `<tr><td colspan="6" class="p-4 text-center text-slate-400">No records.</td></tr>`;
 }
-
-function viewScreenshot(url) { document.getElementById('screenshot-img-preview').src = url; toggleModal('view-screenshot-modal', true); }
-function closeScreenshotModal() { toggleModal('view-screenshot-modal', false); }
-
-async function approvePayment(id, code, paidAmt, payDate) {
+const viewScreenshot = url => { $('screenshot-img-preview').src = url; toggleModal('view-screenshot-modal', true); };
+const closeScreenshotModal = () => toggleModal('view-screenshot-modal', false);
+async function approvePayment(id, code, amt, date) {
     await _supabase.from('payments').update({ status: 'Approved' }).eq('id', id);
     const { data: s } = await _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId).eq('code', code).single();
     if (s) {
-        let datePayments = s.date_payments || {};
-        datePayments[payDate] = (datePayments[payDate] || 0) + paidAmt;
-        const todayStr = formatToDBDate(getISODateString());
-        await _supabase.from('sellers').update({ today_payment: payDate === todayStr ? ((s.today_payment || 0) + paidAmt) : s.today_payment, date_payments: datePayments }).eq('mlot_id', currentMlotId).eq('code', code);
+        const dp = s.date_payments || {}; dp[date] = (dp[date] || 0) + amt;
+        await _supabase.from('sellers').update({ today_payment: date === formatToDBDate(getISODateString()) ? (s.today_payment || 0) + amt : s.today_payment, date_payments: dp }).eq('mlot_id', currentMlotId).eq('code', code);
     }
-    alert("Payment approved!");
-    renderMlotPaymentHistoryTable();
-    renderMasterAndSaleTables();
+    alert("Approved!"); renderMlotPaymentHistoryTable(); renderMasterAndSaleTables();
 }
+async function rejectPayment(id) { await _supabase.from('payments').update({ status: 'Rejected' }).eq('id', id); alert("Rejected."); renderMlotPaymentHistoryTable(); }
 
-async function rejectPayment(id) {
-    await _supabase.from('payments').update({ status: 'Rejected' }).eq('id', id);
-    alert("Payment rejected.");
-    renderMlotPaymentHistoryTable();
-}
-
-// ================= PURCHASE TICKETS & LEDGER =================
-async function openMlotPurchaseTicketPage() {
-    openSubPage('page-mlot-purchase-ticket');
-    const filterDateInput = document.getElementById('mlot-purchase-filter-date');
-    if (!filterDateInput.value) { filterDateInput.value = getISODateString(); }
-    renderMlotPurchaseTicketTable();
-}
-
+const openMlotPurchaseTicketPage = () => { openSubPage('page-mlot-purchase-ticket'); if (!val('mlot-purchase-filter-date')) $('mlot-purchase-filter-date').value = getISODateString(); renderMlotPurchaseTicketTable(); };
 async function renderMlotPurchaseTicketTable() {
-    const filterDate = formatToDBDate(document.getElementById('mlot-purchase-filter-date').value || getISODateString());
-    const { data } = await _supabase.from('purchase_store').select('*').eq('mlot_id', currentMlotId).eq('date', filterDate);
-    const tbody = document.getElementById('mlot-purchase-ticket-tbody');
-    tbody.innerHTML = '';
-    if (!data || data.length === 0) { tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">No purchase records found for ${filterDate}.</td></tr>`; return; }
+    const d = formatToDBDate(val('mlot-purchase-filter-date') || getISODateString());
+    const { data } = await _supabase.from('purchase_store').select('*').eq('mlot_id', currentMlotId).eq('date', d);
+    $('mlot-purchase-ticket-tbody').innerHTML = (data || []).map(p => `<tr class="border-b border-slate-100"><td class="p-3 text-[10px] text-slate-500">${p.date}</td><td class="p-3">${p.item}</td><td class="p-3 font-bold">${p.series}</td><td class="p-3 font-mono text-[10px]">${p.ticket_range}</td><td class="p-3 text-purple-600 font-bold">${p.qty}</td><td class="p-3 font-bold">${fmtCurr(p.cost_raw)}</td></tr>`).join('') || `<tr><td colspan="6" class="p-4 text-center text-slate-400">No records found.</td></tr>`;
+}
 
-    data.forEach(p => {
-        tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-3 text-[10px] text-slate-500">${p.date}</td><td class="p-3">${p.item}</td><td class="p-3 font-bold">${p.series}</td><td class="p-3 font-mono text-[10px]">${p.ticket_range}</td><td class="p-3 text-purple-600 font-bold">${p.qty}</td><td class="p-3 font-bold">₹${p.cost_raw.toFixed(2)}</td></tr>`;
+// --- LEDGER BOOK ---
+const openLedgerBookPage = () => { openSubPage('page-ledger-book'); $('ledger-filter-date').value = getISODateString(); renderLedgerBookTable(); };
+async function renderLedgerBookTable() {
+    const dFilter = formatToDBDate(val('ledger-filter-date') || getISODateString());
+    const [sel, sales, unsold] = await Promise.all(['sellers', 'sales_records', 'unsold_records'].map(t => _supabase.from(t).select('*').eq('mlot_id', currentMlotId)));
+    const tbody = $('ledger-table-tbody'), tfoot = $('ledger-table-tfoot');
+    let pSum = 0, tSum = 0, paySum = 0, bSum = 0;
+    if (!sel.data?.length) { tbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400">No records.</td></tr>`; tfoot.innerHTML = ''; return; }
+    tbody.innerHTML = sel.data.map((s, idx) => {
+        const prev = s.previous_due || 0, pay = (s.date_payments || {})[dFilter] || 0;
+        const dayDue = (sales.data || []).filter(t => t.code === s.code && t.date === dFilter).reduce((a, c) => a + c.price_raw, 0) - (unsold.data || []).filter(t => t.code === s.code && t.date === dFilter).reduce((a, c) => a + c.price_raw, 0);
+        const bal = prev + dayDue - pay;
+        pSum += prev; tSum += dayDue; paySum += pay; bSum += bal;
+        return `<tr class="border-b border-slate-100"><td class="p-2 border">${String(idx+1).padStart(2,'0')}</td><td class="p-2 border text-[10px] text-slate-500">${dFilter}</td><td class="p-2 border font-semibold text-indigo-600">${s.code}</td><td class="p-2 border font-bold">${s.name}</td><td class="p-2 border font-bold text-red-600">${fmtCurr(prev)}</td><td class="p-2 border font-bold text-slate-800">${fmtCurr(dayDue)}</td><td class="p-2 border"><input type="number" step="0.01" id="pay-input-${s.code}" value="${pay.toFixed(2)}" disabled onclick="if(this.value==='0.00'||this.value==='0')this.value='';" class="w-16 px-1 py-1 bg-slate-100 border rounded text-xs font-bold text-emerald-600 text-center"></td><td class="p-2 border font-extrabold text-indigo-600">${fmtCurr(bal)}</td><td class="p-2 border text-center"><button id="btn-edit-${s.code}" onclick="enableLedgerEdit('${s.code}')" class="px-2 py-1 bg-indigo-600 text-white rounded font-bold text-[10px]">Update</button></td></tr>`;
+    }).join('');
+    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 border text-right font-bold">Total:</td><td class="p-2 border font-bold text-red-600">${fmtCurr(pSum)}</td><td class="p-2 border font-bold text-slate-800">${fmtCurr(tSum)}</td><td class="p-2 border font-bold text-emerald-600">${fmtCurr(paySum)}</td><td colspan="2" class="p-2 border font-bold text-indigo-600">${fmtCurr(bSum)}</td></tr>`;
+}
+
+async function enableLedgerEdit(code) {
+    const input = $(`pay-input-${code}`), btn = $(`btn-edit-${code}`), dFilter = formatToDBDate(val('ledger-filter-date') || getISODateString());
+    if (btn.innerText === "Update") {
+        input.disabled = false; input.className = "w-16 px-1 py-1 bg-white border border-indigo-400 rounded text-xs font-bold text-emerald-600 text-center ring-2 ring-indigo-100"; input.focus();
+        btn.innerText = "Save"; btn.className = "px-2 py-1 bg-emerald-600 text-white rounded font-bold text-[10px]";
+    } else {
+        const valAmt = parseFloat(input.value) || 0;
+        const { data } = await _supabase.from('sellers').select('date_payments, today_payment').eq('mlot_id', currentMlotId).eq('code', code).single();
+        const dp = data?.date_payments || {}; dp[dFilter] = valAmt;
+        await _supabase.from('sellers').update({ date_payments: dp, today_payment: dFilter === formatToDBDate(getISODateString()) ? valAmt : data.today_payment }).eq('mlot_id', currentMlotId).eq('code', code);
+        input.disabled = true; input.className = "w-16 px-1 py-1 bg-slate-100 border rounded text-xs font-bold text-emerald-600 text-center";
+        btn.innerText = "Update"; btn.className = "px-2.5 py-1 bg-indigo-600 text-white rounded-lg font-bold text-[10px]";
+        alert("Payment updated!"); renderLedgerBookTable();
+    }
+}
+
+async function generateLedgerPDFObj() {
+    const { jsPDF } = window.jspdf, doc = new jsPDF(), dFilter = formatToDBDate(val('ledger-filter-date') || getISODateString());
+    const { data: mlot } = await _supabase.from('mlot_users').select('*').eq('mlot_id', currentMlotId).maybeSingle();
+    doc.setFontSize(10); doc.text(`Generated Date: ${formatToDBDate(getISODateString())}`, 14, 15);
+    doc.setFontSize(14); doc.text(`${mlot?.business_name || 'MLOT'} (${currentMlotId})`, 105, 15, { align: 'center' });
+    doc.setFontSize(10); if (mlot?.mobile) doc.text(`Contact: ${mlot.mobile}`, 105, 21, { align: 'center' });
+    doc.text(`Ledger Summary Date: ${dFilter}`, 14, 27);
+    let pSum = 0, tSum = 0, paySum = 0, bSum = 0, rows = [];
+    document.querySelectorAll('#ledger-table-tbody tr').forEach(r => {
+        const c = r.querySelectorAll('td');
+        if (c.length >= 8) {
+            pSum += parseFloat(c[4].innerText.replace('₹', '')) || 0; tSum += parseFloat(c[5].innerText.replace('₹', '')) || 0;
+            paySum += parseFloat(c[6].querySelector('input').value) || 0; bSum += parseFloat(c[7].innerText.replace('₹', '')) || 0;
+            rows.push([c[0].innerText, c[1].innerText, c[2].innerText, c[3].innerText, c[4].innerText, c[5].innerText, fmtCurr(c[6].querySelector('input').value), c[7].innerText]);
+        }
+    });
+    doc.autoTable({ startY: 32, head: [['Sl', 'Date', 'Code', 'Name', 'Total Due', 'Today Due', 'Payment', 'Balance']], body: rows, foot: [['', '', '', 'Total:', fmtCurr(pSum), fmtCurr(tSum), fmtCurr(paySum), fmtCurr(bSum)]], theme: 'grid', headStyles: { fillColor: [79, 70, 229] }, styles: { fontSize: 8, cellPadding: 2 } });
+    return doc;
+}
+const downloadOrOpenLedgerReport = async () => { const doc = await generateLedgerPDFObj(); openPDFDirectly(doc, `Ledger_Report_${formatToDBDate(val('ledger-filter-date')).replace(/\//g, '-')}.pdf`); };
+
+// --- SELLER PORTAL PAGES ---
+function openSellerAccountHome() {
+    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
+    $('page-seller-account').classList.remove('hidden');
+    _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single().then(({ data }) => {
+        $('seller-portal-banner-name').innerText = `Welcome, ${data?.name || "Seller"} (${currentSellerCode})`;
     });
 }
 
+function openSellerPage(page) {
+    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
+    if (page === 'purchase') { openSubPage('page-seller-purchase'); $('seller-stock-filter-date').value = getISODateString(); renderSellerAvailableStockIndividual(); }
+    else if (page === 'unsold') { openSubPage('page-seller-unsold'); $('s-unsold-date').value = getISODateString(); $('s-unsold-q-date').value = getISODateString(); switchSellerUnsoldMode('detailed'); }
+    else if (page === 'sold') { openSubPage('page-seller-sold'); renderSellerSoldTable(); }
+    else if (page === 'history') { openSubPage('page-seller-history'); renderSellerPaymentHistory(); }
+    else if (page === 'ledger') { openSubPage('page-seller-ledger'); $('seller-ledger-filter-date').value = getISODateString(); renderSellerLedger(); }
+    else if (page === 'payment') { openSubPage('page-seller-payment'); selectPayType('total'); }
+}
+
+async function renderSellerSoldTable() {
+    const { data } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode);
+    $('seller-sold-tbody').innerHTML = (data || []).map(t => `<tr class="border-b border-slate-100"><td class="p-3 text-[10px] text-slate-500">${t.date}</td><td class="p-3">${t.item}</td><td class="p-3 font-bold">${t.series}</td><td class="p-3 font-mono text-[10px]">${t.ticket_range}</td><td class="p-3 text-emerald-600 font-bold">${t.qty}</td><td class="p-3 font-bold">${fmtCurr(t.price_raw)}</td></tr>`).join('') || `<tr><td colspan="6" class="p-4 text-center text-slate-400">No sold tickets.</td></tr>`;
+}
+
+async function renderSellerPaymentHistory() {
+    const { data } = await _supabase.from('payments').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode);
+    $('seller-payment-history-tbody').innerHTML = (data || []).map(p => `<tr class="border-b border-slate-100"><td class="p-3 text-[10px] text-slate-500">${p.date}</td><td class="p-3 font-bold">${fmtCurr(p.total_due)}</td><td class="p-3 font-bold text-emerald-600">${fmtCurr(p.paid_amount)}</td><td class="p-3 text-center"><span class="text-[10px] font-bold px-2 py-0.5 rounded ${p.status === 'Approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}">${p.status}</span></td></tr>`).join('') || `<tr><td colspan="4" class="p-4 text-center text-slate-400">No history found.</td></tr>`;
+}
+
 async function renderSellerLedger() {
-    const dateFilter = formatToDBDate(document.getElementById('seller-ledger-filter-date').value || getISODateString());
-    const { data: s } = await _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
-    const { data: sales } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode);
-    const { data: unsold } = await _supabase.from('unsold_records').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode);
-    if (!s) return;
-
-    let dayDue = (sales || []).filter(t => t.date === dateFilter).reduce((acc, c) => acc + c.price_raw, 0) - (unsold || []).filter(t => t.date === dateFilter).reduce((acc, c) => acc + c.price_raw, 0);
-    let dueBalance = (s.previous_due || 0) + dayDue - ((s.date_payments || {})[dateFilter] || 0);
-
-    document.getElementById('s-ledger-prev').innerText = `₹${(s.previous_due || 0).toFixed(2)}`;
-    document.getElementById('s-ledger-today').innerText = `₹${dayDue.toFixed(2)}`;
-    document.getElementById('s-ledger-pay').innerText = `₹${((s.date_payments || {})[dateFilter] || 0).toFixed(2)}`;
-    document.getElementById('s-ledger-balance').innerText = `₹${dueBalance.toFixed(2)}`;
+    const dFilter = formatToDBDate(val('seller-ledger-filter-date') || getISODateString());
+    const [s, sales, unsold] = await Promise.all([
+        _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single(),
+        _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode),
+        _supabase.from('unsold_records').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode)
+    ]);
+    if (!s.data) return;
+    const dayDue = (sales.data || []).filter(t => t.date === dFilter).reduce((a, c) => a + c.price_raw, 0) - (unsold.data || []).filter(t => t.date === dFilter).reduce((a, c) => a + c.price_raw, 0);
+    const pay = (s.data.date_payments || {})[dFilter] || 0;
+    $('s-ledger-prev').innerText = fmtCurr(s.data.previous_due); $('s-ledger-today').innerText = fmtCurr(dayDue);
+    $('s-ledger-pay').innerText = fmtCurr(pay); $('s-ledger-balance').innerText = fmtCurr((s.data.previous_due || 0) + dayDue - pay);
 }
 
 async function selectPayType(type) {
-    selectedPayModeType = type;
-    const btnTotal = document.getElementById('pay-type-total');
-    const btnToday = document.getElementById('pay-type-today');
-    const { data: s } = await _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
-    const { data: sales } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode);
-    const { data: unsold } = await _supabase.from('unsold_records').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode);
-    const todayStr = formatToDBDate(getISODateString());
-    if (!s) return;
-
-    let todayDue = (sales || []).filter(t => t.date === todayStr).reduce((acc, c) => acc + c.price_raw, 0) - (unsold || []).filter(t => t.date === todayStr).reduce((acc, c) => acc + c.price_raw, 0);
-    let totalDue = (s.previous_due || 0) + todayDue - (s.today_payment || 0);
-
-    if (type === 'total') {
-        btnTotal.className = "py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-sm";
-        btnToday.className = "py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold";
-        document.getElementById('pay-amount-display').innerText = `₹${totalDue.toFixed(2)}`;
-    } else {
-        btnToday.className = "py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold";
-        btnTotal.className = "py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold";
-        document.getElementById('pay-amount-display').innerText = `₹${todayDue.toFixed(2)}`;
-    }
-
-    const { data: mlotUser } = await _supabase.from('mlot_users').select('upi_id').eq('mlot_id', currentMlotId).maybeSingle();
-    if (mlotUser && mlotUser.upi_id) { document.getElementById('mlot-upi-display').innerText = mlotUser.upi_id; }
+    const [s, sales, unsold] = await Promise.all([
+        _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single(),
+        _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode),
+        _supabase.from('unsold_records').select('*').eq('mlot_id', currentMlotId).eq('code', currentSellerCode)
+    ]);
+    if (!s.data) return;
+    const today = formatToDBDate(getISODateString());
+    const todayDue = (sales.data || []).filter(t => t.date === today).reduce((a, c) => a + c.price_raw, 0) - (unsold.data || []).filter(t => t.date === today).reduce((a, c) => a + c.price_raw, 0);
+    const totalDue = (s.data.previous_due || 0) + todayDue - (s.data.today_payment || 0);
+    $('pay-type-total').className = `py-2.5 ${type === 'total' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700'} rounded-xl text-xs font-bold`;
+    $('pay-type-today').className = `py-2.5 ${type === 'today' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700'} rounded-xl text-xs font-bold`;
+    $('pay-amount-display').innerText = fmtCurr(type === 'total' ? totalDue : todayDue);
+    const { data: mlot } = await _supabase.from('mlot_users').select('upi_id').eq('mlot_id', currentMlotId).maybeSingle();
+    if (mlot?.upi_id) $('mlot-upi-display').innerText = mlot.upi_id;
 }
 
-function openDirectUPIApp() {
-    const upiId = document.getElementById('mlot-upi-display').innerText.trim() || 'tapasm569@ptyes';
-    const amtText = document.getElementById('pay-amount-display').innerText.replace('₹', '').trim();
-    window.location.href = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=MLOT%20Master&am=${amtText}&cu=INR`;
-}
+const openDirectUPIApp = () => window.location.href = `upi://pay?pa=${encodeURIComponent(val('mlot-upi-display') || 'tapasm569@ptyes')}&pn=MLOT%20Master&am=${val('pay-amount-display').replace('₹', '')}&cu=INR`;
 
-async function submitSellerPayment(event) {
-    event.preventDefault();
-    const fileInput = document.getElementById('s-pay-screenshot');
-    if (fileInput.files.length === 0) { alert("Payment screenshot is mandatory!"); return; }
-    const file = fileInput.files[0];
+async function submitSellerPayment(e) {
+    e.preventDefault();
+    const file = $('s-pay-screenshot').files[0];
+    if (!file) return alert("Screenshot required!");
     const reader = new FileReader();
-    reader.onload = function(e) {
+    reader.onload = () => {
         const img = new Image();
-        img.onload = async function() {
+        img.onload = async () => {
             const canvas = document.createElement('canvas');
             canvas.width = 800; canvas.height = (800 / img.width) * img.height;
             canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
-            const amt = parseFloat(document.getElementById('pay-amount-display').innerText.replace('₹', '')) || 0;
-            const { data: sData } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
-            await _supabase.from('payments').insert([{ date: formatToDBDate(getISODateString()), code: currentSellerCode, name: sData ? sData.name : currentSellerCode, total_due: amt, paid_amount: amt, screenshot: compressedBase64, status: 'Pending', mlot_id: currentMlotId }]);
-            alert("Payment & Screenshot submitted successfully!");
-            fileInput.value = '';
-            openSellerAccountHome();
+            const amt = parseFloat(val('pay-amount-display').replace('₹', '')) || 0;
+            const { data: s } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
+            await _supabase.from('payments').insert([{ date: formatToDBDate(getISODateString()), code: currentSellerCode, name: s?.name || currentSellerCode, total_due: amt, paid_amount: amt, screenshot: canvas.toDataURL('image/jpeg', 0.6), status: 'Pending', mlot_id: currentMlotId }]);
+            alert("Submitted!"); $('s-pay-screenshot').value = ''; openSellerAccountHome();
         };
-        img.src = e.target.result;
+        img.src = reader.result;
     };
     reader.readAsDataURL(file);
 }
 
 async function submitPayLater() {
-    const amt = parseFloat(document.getElementById('pay-amount-display').innerText.replace('₹', '')) || 0;
-    const { data: sData } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
-    await _supabase.from('payments').insert([{ date: formatToDBDate(getISODateString()), code: currentSellerCode, name: sData ? sData.name : currentSellerCode, total_due: amt, paid_amount: amt, screenshot: null, status: 'Pending', mlot_id: currentMlotId }]);
-    alert("Pay Later request submitted successfully!");
-    openSellerAccountHome();
-}
-
-async function openLedgerBookPage() {
-    openSubPage('page-ledger-book');
-    document.getElementById('ledger-filter-date').value = getISODateString();
-    renderLedgerBookTable();
-}
-
-async function renderLedgerBookTable() {
-    const dateFilter = formatToDBDate(document.getElementById('ledger-filter-date').value || getISODateString());
-    const { data: sellers } = await _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId);
-    const { data: sales } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId);
-    const { data: unsold } = await _supabase.from('unsold_records').select('*').eq('mlot_id', currentMlotId);
-    const tbody = document.getElementById('ledger-table-tbody');
-    const tfoot = document.getElementById('ledger-table-tfoot');
-    tbody.innerHTML = '';
-
-    let pSum = 0, tSum = 0, paySum = 0, bSum = 0;
-    if (!sellers || sellers.length === 0) { tbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400">No sellers registered.</td></tr>`; tfoot.innerHTML = `<tr><td colspan="9" class="p-2 text-center font-bold">Total: ₹0.00</td></tr>`; return; }
-
-    sellers.forEach((s, idx) => {
-        const slNo = String(idx + 1).padStart(2, '0');
-        const prevDue = s.previous_due || 0;
-        const dayPayment = (s.date_payments || {})[dateFilter] !== undefined ? (s.date_payments || {})[dateFilter] : 0.00;
-        let todayDue = (sales || []).filter(t => t.code === s.code && t.date === dateFilter).reduce((a, c) => a + c.price_raw, 0) - (unsold || []).filter(t => t.code === s.code && t.date === dateFilter).reduce((a, c) => a + c.price_raw, 0);
-        let balance = prevDue + todayDue - dayPayment;
-
-        pSum += prevDue; tSum += todayDue; paySum += dayPayment; bSum += balance;
-        tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2 border border-slate-200">${slNo}</td><td class="p-2 border border-slate-200 text-[10px] text-slate-500">${dateFilter}</td><td class="p-2 border border-slate-200 font-semibold text-indigo-600">${s.code}</td><td class="p-2 border border-slate-200 font-bold">${s.name}</td><td class="p-2 border border-slate-200 font-bold text-red-600">₹${prevDue.toFixed(2)}</td><td class="p-2 border border-slate-200 font-bold text-slate-800">₹${todayDue.toFixed(2)}</td><td class="p-2 border border-slate-200"><input type="number" step="0.01" id="pay-input-${s.code}" value="${dayPayment.toFixed(2)}" disabled onclick="if(this.value==='0.00'||this.value==='0')this.value='';" class="w-16 px-1 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-bold text-emerald-600 text-center"></td><td class="p-2 border border-slate-200 font-extrabold text-indigo-600">₹${balance.toFixed(2)}</td><td class="p-2 border border-slate-200 text-center"><button id="btn-edit-${s.code}" onclick="enableLedgerEdit('${s.code}')" class="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-bold text-[10px]">Update</button></td></tr>`;
-    });
-    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 border border-slate-200 text-right font-bold">Total:</td><td class="p-2 border border-slate-200 font-bold text-red-600">₹${pSum.toFixed(2)}</td><td class="p-2 border border-slate-200 font-bold text-slate-800">₹${tSum.toFixed(2)}</td><td class="p-2 border border-slate-200 font-bold text-emerald-600">₹${paySum.toFixed(2)}</td><td colspan="2" class="p-2 border border-slate-200 font-bold text-indigo-600">₹${bSum.toFixed(2)}</td></tr>`;
-}
-
-async function enableLedgerEdit(code) {
-    const inputField = document.getElementById(`pay-input-${code}`);
-    const btn = document.getElementById(`btn-edit-${code}`);
-    const dateFilter = formatToDBDate(document.getElementById('ledger-filter-date').value || getISODateString());
-
-    if (btn.innerText === "Update") {
-        inputField.disabled = false;
-        inputField.className = "w-16 px-1 py-1 bg-white border border-indigo-400 rounded text-xs font-bold text-emerald-600 text-center ring-2 ring-indigo-100";
-        inputField.focus();
-        btn.innerText = "Save";
-        btn.className = "px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-bold text-[10px]";
-    } else {
-        const val = parseFloat(inputField.value) || 0;
-        const { data: sellerData } = await _supabase.from('sellers').select('date_payments, today_payment').eq('mlot_id', currentMlotId).eq('code', code).single();
-        let datePayments = sellerData && sellerData.date_payments ? sellerData.date_payments : {};
-        datePayments[dateFilter] = val;
-
-        const todayStr = formatToDBDate(getISODateString());
-        await _supabase.from('sellers').update({ date_payments: datePayments, today_payment: dateFilter === todayStr ? val : sellerData.today_payment }).eq('mlot_id', currentMlotId).eq('code', code);
-        inputField.disabled = true;
-        inputField.className = "w-16 px-1 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-bold text-emerald-600 text-center";
-        btn.innerText = "Update";
-        btn.className = "px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-[10px]";
-        alert("Payment updated for " + dateFilter + "!");
-        renderLedgerBookTable();
-    }
-}
-
-async function generateLedgerPDFObj() {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    const dateFilter = formatToDBDate(document.getElementById('ledger-filter-date').value || getISODateString());
-    const { data: mlotData } = await _supabase.from('mlot_users').select('*').eq('mlot_id', currentMlotId).maybeSingle();
-
-    doc.setFontSize(10);
-    doc.text(`Generated Date: ${formatToDBDate(getISODateString())}`, 14, 15);
-    doc.setFontSize(14);
-    doc.text(`${mlotData?.business_name || 'MLOT'} (${currentMlotId})`, 105, 15, { align: 'center' });
-    doc.setFontSize(10);
-    if(mlotData?.mobile) doc.text(`Contact: ${mlotData.mobile}`, 105, 21, { align: 'center' });
-    doc.text(`Ledger Summary Date: ${dateFilter}`, 14, 27);
-
-    let tableRows = []; let pSum = 0, tSum = 0, paySum = 0, bSum = 0;
-    document.querySelectorAll('#ledger-table-tbody tr').forEach(row => {
-        const cols = row.querySelectorAll('td');
-        if(cols.length >= 8) {
-            let sl = cols[0].innerText, dt = cols[1].innerText, code = cols[2].innerText, name = cols[3].innerText, tDue = cols[4].innerText, todayDue = cols[5].innerText, pay = cols[6].querySelector('input').value, bal = cols[7].innerText;
-            pSum += parseFloat(tDue.replace('₹', '')) || 0; tSum += parseFloat(todayDue.replace('₹', '')) || 0; paySum += parseFloat(pay) || 0; bSum += parseFloat(bal.replace('₹', '')) || 0;
-            tableRows.push([sl, dt, code, name, tDue, todayDue, `₹${parseFloat(pay).toFixed(2)}`, bal]);
-        }
-    });
-
-    doc.autoTable({
-        startY: 32,
-        head: [['Sl', 'Date', 'Code', 'Name', 'Total Due', 'Today Due', 'Payment', 'Balance']],
-        body: tableRows,
-        foot: [['', '', '', 'Total:', `₹${pSum.toFixed(2)}`, `₹${tSum.toFixed(2)}`, `₹${paySum.toFixed(2)}`, `₹${bSum.toFixed(2)}`]],
-        theme: 'grid',
-        headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold' },
-        styles: { fontSize: 8, cellPadding: 2 }
-    });
-    return doc;
-}
-
-async function downloadOrOpenLedgerReport() {
-    const doc = await generateLedgerPDFObj();
-    const dateFilter = formatToDBDate(document.getElementById('ledger-filter-date').value || getISODateString());
-    openPDFDirectly(doc, `Ledger_Report_${dateFilter.replace(/\//g, '-')}.pdf`);
+    const amt = parseFloat(val('pay-amount-display').replace('₹', '')) || 0;
+    const { data: s } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
+    await _supabase.from('payments').insert([{ date: formatToDBDate(getISODateString()), code: currentSellerCode, name: s?.name || currentSellerCode, total_due: amt, paid_amount: amt, screenshot: null, status: 'Pending', mlot_id: currentMlotId }]);
+    alert("Pay Later submitted!"); openSellerAccountHome();
 }
