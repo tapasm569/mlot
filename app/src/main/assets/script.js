@@ -41,6 +41,22 @@ function convertDateToComparable(dateStr) {
     return dateStr;
 }
 
+// --- DIRECT PDF VIEWER HELPER FOR ANDROID WEBVIEW ---
+function openPDFDirectly(doc) {
+    if (!doc) return;
+    try {
+        const pdfDataUri = doc.output('datauristring');
+        const win = window.open();
+        if (win) {
+            win.document.write(`<iframe src="${pdfDataUri}" style="width:100%; height:100%; border:none; margin:0; padding:0;"></iframe>`);
+        } else {
+            window.location.href = pdfDataUri;
+        }
+    } catch (err) {
+        alert("Could not open PDF directly: " + err.message);
+    }
+}
+
 // --- KEYBOARD & FOOTER FIX ---
 window.addEventListener('focusin', (e) => {
     if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) {
@@ -314,7 +330,6 @@ function openSubPage(sectionId, push = true) {
 
 // Android hardware back button & gesture navigation handler
 window.addEventListener('popstate', (event) => {
-    // 1. If any modal is open, close the modal first
     const openModals = document.querySelectorAll('.absolute.inset-0.z-50:not(.hidden), div[id$="-modal"]:not(.hidden)');
     for (let modal of openModals) {
         if (modal.id === 'login-screen') continue;
@@ -323,7 +338,6 @@ window.addEventListener('popstate', (event) => {
         return;
     }
 
-    // 2. Handle page history state back navigation
     if (event.state && event.state.type === 'tab') {
         switchTab(event.state.name, false);
     } else if (event.state && event.state.type === 'subpage') {
@@ -1125,6 +1139,7 @@ async function filterSaleReport() {
     tfoot.innerHTML = `<tr><td colspan="6" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
 }
 
+// Generates Sale Report PDF and opens it directly inside Android WebView (Download Receipt)
 async function downloadSaleReportPDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -1142,7 +1157,7 @@ async function downloadSaleReportPDF() {
     doc.setFontSize(9);
     doc.text(`Generated Date: ${formatToDBDate(getISODateString())}`, 14, 15);
     doc.setFontSize(13);
-    doc.text(selectedCode ? `Seller Name: ${sellerNameStr} (${selectedCode})` : `${mlotData?.business_name || 'MLOT'} - General Sale Report`, 105, 15, { align: 'center' });
+    doc.text(selectedCode ? `Seller Name: ${sellerNameStr} (${selectedCode})` : `${mlotData?.business_name || 'MLOT'} - Sale Receipt`, 105, 15, { align: 'center' });
     doc.setFontSize(9);
     if (sellerPhoneStr) doc.text(`Contact: ${sellerPhoneStr}`, 105, 21, { align: 'center' });
     doc.text(`Report Period: ${formatToDBDate(f)} to ${formatToDBDate(to)}`, 14, 27);
@@ -1169,7 +1184,8 @@ async function downloadSaleReportPDF() {
         headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold' },
         styles: { fontSize: 8, cellPadding: 2 }
     });
-    doc.save(`Sale_Report_${selectedCode || 'All'}_${f}_to_${to}.pdf`);
+
+    openPDFDirectly(doc);
 }
 
 // ================= TRACKERS & VERIFICATIONS (WITH REJECT) =================
@@ -1566,14 +1582,8 @@ async function generateLedgerPDFObj() {
     return doc;
 }
 
-async function generateLedgerPDF() { (await generateLedgerPDFObj()).save(`Ledger_Report_${formatToDBDate(getISODateString())}.pdf`); }
-async function showLedgerPDF() { 
+// Generates Ledger PDF and opens it directly inside Android WebView (Download Report)
+async function downloadOrOpenLedgerReport() {
     const doc = await generateLedgerPDFObj();
-    if (doc) {
-        const pdfDataUri = doc.output('datauristring');
-        const win = window.open();
-        if (win) { win.document.write(`<iframe src="${pdfDataUri}" style="width:100%; height:100%; border:none;"></iframe>`); } 
-        else { window.location.href = pdfDataUri; }
-    }
+    openPDFDirectly(doc);
 }
-async function downloadLedgerPDF() { await generateLedgerPDF(); }
