@@ -4,6 +4,7 @@ const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUserRole = 'mlot', currentMlotId = null, currentSellerCode = null;
 let pendingBatchTickets = [], pendingUnsoldBatch = [], pendingPurchaseDraft = [];
+let importedTicketDraft = []; // Temporary holder for OCR imported tickets
 let tempSellerData = {}, currentStockCategory = '1 PM', currentSellerStockCategory = '1 PM';
 let currentlyViewingSellerCode = null, isEditingSeller = false;
 let activeSaleSetPrice = 6.50, activeUnsoldSetPrice = 6.50, activeSellerUnsoldSetPrice = 6.50, activeQuickUnsoldSetPrice = 6.50;
@@ -20,7 +21,14 @@ function getISODateString(d = new Date()) {
 function formatToDBDate(str) {
     if (!str) return '';
     str = String(str).trim();
-    if (str.includes('/')) return str; // Already DD/MM/YYYY
+    if (str.includes('/')) {
+        const parts = str.split('/');
+        if (parts.length === 2) {
+            // Missing year e.g. "21/05" -> append current year 2026
+            return `${parts[0]}/${parts[1]}/2026`;
+        }
+        return str; // Already DD/MM/YYYY
+    }
     if (str.includes('-')) {
         const p = str.split('-');
         if (p.length === 3) {
@@ -36,6 +44,7 @@ function convertDateToComparable(dateStr) {
     dateStr = String(dateStr).trim();
     if (dateStr.includes('/')) {
         const p = dateStr.split('/');
+        if (p.length === 2) return `2026${p[1].padStart(2, '0')}${p[0].padStart(2, '0')}`;
         if (p.length === 3) return `${p[2]}${p[1].padStart(2, '0')}${p[0].padStart(2, '0')}`;
     }
     if (dateStr.includes('-')) {
@@ -444,7 +453,7 @@ function openSellerPage(pageKey) {
     }
 }
 
-// ================= STOCK & INVENTORY VIEWS (FIXED BUTTON COLOR & SHAPE) =================
+// ================= STOCK & INVENTORY VIEWS =================
 function selectStockCategory(cat) {
     currentStockCategory = cat;
     ['1pm', '6pm', '8pm'].forEach(c => {
@@ -575,7 +584,7 @@ async function renderSellerAvailableStockIndividual() {
     document.getElementById('seller-available-count').innerText = `${totalAvail} Available`;
 }
 
-// ================= PURCHASE ENTRY =================
+// ================= PURCHASE ENTRY & ENHANCED OCR SCANNER =================
 function openPurchaseEntryPage() {
     openSubPage('page-purchase-entry');
     document.getElementById('pur-date').value = getISODateString();
@@ -609,6 +618,220 @@ function calculatePurchaseCost() {
     const calc = parseRangeQuantity(series, fromStr, toStr);
     document.getElementById('pur-qty').value = calc.qty || 0;
     document.getElementById('pur-total-amount').innerText = `₹${((calc.qty || 0) * price).toFixed(2)}`;
+}
+
+// Helper: Preprocess low-quality receipt images on canvas for superior OCR
+function preprocessImageForOCR(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Scale up image 2x for clearer OCR recognition
+                const scale = 2;
+                canvas.width = img.width * scale;
+                canvas.height = img.height * scale;
+                
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                // Enhance contrast
+                const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imgData.data;
+                const contrast = 1.4; // boost contrast
+                
+                for (let i = 0; i < data.length; i += 4) {
+                    let r = data[i];
+                    let g = data[i + 1];
+                    let b = data[i + 2];
+                    
+                    let v = 0.299 * r + 0.587 * g + 0.114 * b; // grayscale
+                    v = ((v - 128) * contrast) + 128;
+                    v = Math.max(0, Math.min(255, v));
+                    
+                    data[i] = v;
+                    data[i + 1] = v;
+                    data[i + 2] = v;
+                }
+                
+                ctx.putImageData(imgData, 0, 0);
+                resolve(canvas.toDataURL('image/jpeg', 0.95));
+            };
+            img.onerror = reject;
+            img.src = event.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+// --- OCR IMPORT PROCESSING FUNCTION ---
+async function processImportedTicketFile() {
+    const fileInput = document.getElementById('import-file-input');
+    if (!fileInput.files || fileInput.files.length === 0) {
+        alert("Please select an image file to import.");
+        return;
+    }
+
+    const file = fileInput.files[0];
+    if (file.type === 'application/pdf') {
+        alert("Direct PDF OCR scanning requires image snapshots. For best results on low-quality receipts or PDF documents, please take a photo/screenshot of the receipt and upload it as an image (JPG/PNG).");
+        return;
+    }
+
+    const priceInput = document.getElementById('pur-buying-price');
+    const unitPrice = parseFloat(priceInput.value) || parseFloat(rememberedPurchasePrice) || 6.50;
+
+    alert("Enhancing image and scanning receipt with OCR... Please wait.");
+
+    try {
+        const processedDataUrl = await preprocessImageForOCR(file);
+        const { data: { text } } = await Tesseract.recognize(processedDataUrl, 'eng', {
+            logger: m => console.log(m)
+        });
+
+        console.log("OCR Extracted Text:\n", text);
+        parseReceiptText(text, unitPrice);
+
+    } catch (err) {
+        alert("OCR processing failed: " + err.message);
+    }
+}
+
+function parseReceiptText(text, unitPrice) {
+    const lines = text.split('\n');
+    importedTicketDraft = [];
+
+    const rowRegex = /^\s*([0-9]+)\s+([A-Za-z0-9]+)\s+([0-9]{2}\/[0-9]{2})\s+([A-Z0-9]+)\s+([0-9]+-[0-9]+)/i;
+
+    lines.forEach(line => {
+        let match = line.trim().match(rowRegex);
+        if (match) {
+            let rawSeries = match[2].toUpperCase();
+            let rawDate = match[3];
+            let group = match[4].toUpperCase();
+            let rawRange = match[5];
+
+            // Normalization rule: E501 -> E50, D501 -> D50, E501 -> E50
+            if ((rawSeries.startsWith('E') || rawSeries.startsWith('D') || rawSeries.startsWith('M')) && rawSeries.endsWith('01') && rawSeries.length > 3) {
+                rawSeries = rawSeries.substring(0, rawSeries.length - 1);
+            }
+
+            let item = "1 PM";
+            if (rawSeries.startsWith('D')) item = "6 PM";
+            else if (rawSeries.startsWith('E')) item = "8 PM";
+            else if (rawSeries.startsWith('M')) item = "1 PM";
+
+            let date = formatToDBDate(rawDate);
+
+            let rangeParts = rawRange.split('-');
+            let fromStr = rangeParts[0];
+            let toStr = rangeParts[1];
+            let calc = parseRangeQuantity(rawSeries, fromStr, toStr);
+
+            if (!calc.error) {
+                let ticketRangeStr = formatTicketRangeString(group, parseInt(fromStr), calc.actualToVal);
+                
+                importedTicketDraft.push({
+                    date,
+                    item,
+                    series: rawSeries,
+                    ticket_range: ticketRangeStr,
+                    qty: calc.qty,
+                    cost_raw: calc.qty * unitPrice,
+                    mlot_id: currentMlotId || localStorage.getItem('currentMlotId')
+                });
+            }
+        }
+    });
+
+    if (importedTicketDraft.length > 0) {
+        alert(`Successfully imported ${importedTicketDraft.length} ticket batches! Click "Verify ticket and save" to review.`);
+        openVerifyImportedModal();
+    } else {
+        alert("Could not automatically detect ticket rows from this image. Please ensure the receipt photo is clear or use manual entry.");
+    }
+}
+
+function openVerifyImportedModal() {
+    const tbody = document.getElementById('imported-preview-tbody');
+    const tfoot = document.getElementById('imported-preview-tfoot');
+    tbody.innerHTML = '';
+    let q = 0, c = 0;
+
+    if (importedTicketDraft.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400">No imported tickets. Please import a file first.</td></tr>`;
+        tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-purple-600">0</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹0.00</td></tr>`;
+    } else {
+        importedTicketDraft.forEach((item, idx) => {
+            q += item.qty;
+            c += item.cost_raw;
+            tbody.innerHTML += `
+                <tr class="border-b border-slate-100">
+                    <td class="p-2 text-[10px]">${item.date}</td>
+                    <td class="p-2">${item.item}</td>
+                    <td class="p-2 font-bold">${item.series}</td>
+                    <td class="p-2 font-mono text-[10px]">${item.ticket_range}</td>
+                    <td class="p-2 font-bold text-purple-600">${item.qty}</td>
+                    <td class="p-2 font-bold">₹${Number(item.cost_raw).toFixed(2)}</td>
+                    <td class="p-2 text-center">
+                        <button type="button" onclick="importedTicketDraft.splice(${idx}, 1); openVerifyImportedModal();" class="text-red-500 hover:text-red-700">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+        tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-purple-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${c.toFixed(2)}</td></tr>`;
+    }
+    toggleModal('verify-imported-modal', true);
+}
+
+function closeVerifyImportedModal() {
+    toggleModal('verify-imported-modal', false);
+}
+
+async function saveImportedTicketsToStore() {
+    try {
+        if (!currentMlotId) currentMlotId = localStorage.getItem('currentMlotId');
+        if (!currentMlotId) {
+            alert("Error: Session missing. Please log in again.");
+            return;
+        }
+
+        if (importedTicketDraft.length === 0) {
+            alert("No imported tickets to save.");
+            return;
+        }
+
+        const payload = importedTicketDraft.map(item => ({
+            date: formatToDBDate(item.date),
+            item: String(item.item),
+            series: String(item.series),
+            ticket_range: String(item.ticket_range),
+            qty: parseInt(item.qty) || 0,
+            cost_raw: parseFloat(item.cost_raw) || 0.00,
+            mlot_id: String(currentMlotId)
+        }));
+
+        const { error } = await _supabase.from('purchase_store').insert(payload);
+        if (error) {
+            alert("Database Error (" + error.code + "): " + error.message);
+            return;
+        }
+
+        alert("Imported tickets saved to store inventory successfully!");
+        importedTicketDraft = [];
+        closeVerifyImportedModal();
+        switchTab('purchase');
+
+    } catch (err) {
+        alert("Unexpected error: " + err.message);
+    }
 }
 
 function handlePurchaseBlurAutoDraft() {
@@ -1019,7 +1242,7 @@ async function submitTicketEntries() {
     }
 }
 
-// ================= UNSOLD TICKETS (FIXED QUICK ENTRY) =================
+// ================= UNSOLD TICKETS =================
 function openUnsoldTicketPage() {
     openSubPage('page-unsold-ticket');
     document.getElementById('unsold-date').value = getISODateString();
@@ -1489,7 +1712,7 @@ async function filterSaleReport() {
     else {
         filtered.forEach(t => {
             q += t.qty; p += t.price_raw;
-            tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2 text-[10px]">${t.date}</td><td class="p-2 font-semibold text-indigo-600">${t.code}</td><td class="p-2">${t.name}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-emerald-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${t.price_raw.toFixed(2)}</td></tr>`;
+            tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2 text-[10px]">${t.date}</td><td class="p-2 font-semibold text-indigo-600">${t.code}</td><td class="p-2">${t.name}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-emerald-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${Number(t.price_raw).toFixed(2)}</td></tr>`;
         });
     }
     tfoot.innerHTML = `<tr><td colspan="6" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
@@ -1532,7 +1755,7 @@ async function generateSaleReportPDFDoc() {
     let tableRows = []; let totalQ = 0, totalP = 0;
     filtered.forEach((t, index) => {
         totalQ += t.qty; totalP += t.price_raw;
-        tableRows.push([index + 1, t.date, t.code, t.name, t.item, t.series, t.ticket_range, t.qty, `₹${t.price_raw.toFixed(2)}`]);
+        tableRows.push([index + 1, t.date, t.code, t.name, t.item, t.series, t.ticket_range, t.qty, `₹${Number(t.price_raw).toFixed(2)}`]);
     });
 
     doc.autoTable({
@@ -1623,7 +1846,7 @@ async function openSellerSoldDetail(code, date) {
 
     (data || []).filter(t => formatToDBDate(t.date) === date).forEach((t, i) => {
         q += t.qty; p += t.price_raw;
-        tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2">${i+1}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-emerald-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${t.price_raw.toFixed(2)}</td></tr>`;
+        tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2">${i+1}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-emerald-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${Number(t.price_raw).toFixed(2)}</td></tr>`;
     });
     tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
     toggleModal('seller-sold-detail-modal', true);
@@ -1672,7 +1895,7 @@ async function openSellerUnsoldDetail(code, date) {
 
     (data || []).filter(t => date ? formatToDBDate(t.date) === date : true).forEach(t => {
         q += t.qty; p += t.price_raw;
-        tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2 text-[10px]">${t.date}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-amber-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${t.price_raw.toFixed(2)}</td></tr>`;
+        tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2 text-[10px]">${t.date}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-amber-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${Number(t.price_raw).toFixed(2)}</td></tr>`;
     });
     tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-amber-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
     toggleModal('seller-unsold-detail-modal', true);
@@ -1703,7 +1926,7 @@ async function openVerifyUnsoldModal() {
                 <div>
                     <span class="font-bold text-indigo-600">${item.code} (${item.name})</span>
                     <p class="text-[10px] text-slate-500">${item.date} | ${item.item} | ${item.series} | ${item.ticket_range}</p>
-                    <p class="text-[10px] font-bold text-amber-600">Qty: ${item.qty} | Amt: ₹${item.price_raw.toFixed(2)}</p>
+                    <p class="text-[10px] font-bold text-amber-600">Qty: ${item.qty} | Amt: ₹${Number(item.price_raw).toFixed(2)}</p>
                 </div>
                 <div class="flex gap-1">
                     <button onclick="verifySingleUnsold('${item.id}')" class="px-2.5 py-1.5 bg-emerald-600 text-white rounded-lg font-bold text-[10px]">Verify</button>
@@ -1768,7 +1991,7 @@ async function renderMlotPaymentHistoryTable() {
     data.forEach((p) => {
         let screenshotBtn = p.screenshot ? `<button onclick="viewScreenshot('${p.screenshot}')" class="text-indigo-600 font-bold underline">View</button>` : 'No Image';
         let actionHtml = p.status === 'Pending' ? `<button onclick="approvePayment('${p.id}', '${p.code}', ${p.paid_amount}, '${p.date}')" class="px-2 py-1 bg-emerald-600 text-white rounded text-[10px] mr-1">Approve</button><button onclick="rejectPayment('${p.id}')" class="px-2 py-1 bg-red-600 text-white rounded text-[10px]">Reject</button>` : `<span class="text-[10px] font-bold px-2 py-0.5 rounded ${p.status === 'Approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}">${p.status}</span>`;
-        tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2.5 text-[10px] text-slate-500">${p.date}</td><td class="p-2.5 font-semibold text-indigo-600">${p.code}</td><td class="p-2.5 font-bold">₹${p.total_due.toFixed(2)}</td><td class="p-2.5 font-bold text-emerald-600">₹${p.paid_amount.toFixed(2)}</td><td class="p-2.5 text-center">${screenshotBtn}</td><td class="p-2.5 text-center">${actionHtml}</td></tr>`;
+        tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2.5 text-[10px] text-slate-500">${p.date}</td><td class="p-2.5 font-semibold text-indigo-600">${p.code}</td><td class="p-2.5 font-bold">₹${Number(p.total_due).toFixed(2)}</td><td class="p-2.5 font-bold text-emerald-600">₹${Number(p.paid_amount).toFixed(2)}</td><td class="p-2.5 text-center">${screenshotBtn}</td><td class="p-2.5 text-center">${actionHtml}</td></tr>`;
     });
 }
 
