@@ -1139,15 +1139,25 @@ async function filterSaleReport() {
     tfoot.innerHTML = `<tr><td colspan="6" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
 }
 
-// Generates Sale Report PDF and opens it directly inside Android WebView (Download Receipt)
-async function downloadSaleReportPDF() {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    const f = document.getElementById('report-from-date').value;
-    const to = document.getElementById('report-to-date').value;
-    const selectedCode = document.getElementById('report-filter-seller').value;
-    const { data: mlotData } = await _supabase.from('mlot_users').select('*').eq('mlot_id', currentMlotId).maybeSingle();
-    let sellerNameStr = ""; let sellerPhoneStr = mlotData ? mlotData.mobile : "";
+// --- BULLETPROOF DIRECT PDF VIEWER FOR ANDROID WEBVIEW ---
+function openPDFDirectly(doc) {
+    if (!doc) {
+        alert("Error: PDF document object is empty.");
+        return;
+    }
+    try {
+        // Generate PDF as a Base64 Data URI string
+        const pdfDataUri = doc.output('datauristring');
+        
+        // Force-load the Data URI directly in the current WebView window.
+        // This completely bypasses window.open() popup blocks in Android.
+        window.location.href = pdfDataUri;
+        
+    } catch (err) {
+        alert("Could not open PDF directly: " + err.message);
+        console.error("PDF Open Error:", err);
+    }
+}
 
     if (selectedCode) {
         const { data: sData } = await _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId).eq('code', selectedCode).maybeSingle();
