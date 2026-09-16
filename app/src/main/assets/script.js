@@ -12,34 +12,51 @@ let deviceFCMToken = null;
 // Sticky Buying Price memory for Purchase Entry
 let rememberedPurchasePrice = localStorage.getItem('lastPurchasePrice') || '';
 
-// --- DATE ADAPTERS FOR DD/MM/YYYY DATABASE FORMAT ---
+// --- DATE ADAPTERS FOR DD/MM/YYYY (16/09/2026) FORMAT ---
 function getISODateString(d = new Date()) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function formatToDBDate(isoStr) {
-    if (!isoStr) return '';
-    if (isoStr.includes('/')) return isoStr;
-    const p = isoStr.split('-');
-    return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : isoStr;
+function formatToDBDate(str) {
+    if (!str) return '';
+    str = String(str).trim();
+    if (str.includes('/')) return str; // Already DD/MM/YYYY format
+    if (str.includes('-')) {
+        const p = str.split('-');
+        if (p.length === 3) {
+            // If YYYY-MM-DD -> DD/MM/YYYY
+            if (p[0].length === 4) return `${p[2]}/${p[1]}/${p[0]}`;
+            // If DD-MM-YYYY -> DD/MM/YYYY
+            if (p[2].length === 4) return `${p[0]}/${p[1]}/${p[2]}`;
+        }
+    }
+    return str;
 }
 
 function formatToISODate(dbStr) {
     if (!dbStr) return '';
-    if (dbStr.includes('-')) return dbStr;
-    const p = dbStr.split('/');
-    return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : dbStr;
+    dbStr = String(dbStr).trim();
+    if (dbStr.includes('-') && dbStr.split('-')[0].length === 4) return dbStr;
+    if (dbStr.includes('/')) {
+        const p = dbStr.split('/');
+        return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : dbStr;
+    }
+    return dbStr;
 }
 
 function convertDateToComparable(dateStr) {
     if (!dateStr) return '';
+    dateStr = String(dateStr).trim();
     if (dateStr.includes('/')) {
         const p = dateStr.split('/');
-        return `${p[2]}${p[1]}${p[0]}`;
+        if (p.length === 3) return `${p[2]}${p[1].padStart(2, '0')}${p[0].padStart(2, '0')}`;
     }
     if (dateStr.includes('-')) {
         const p = dateStr.split('-');
-        return `${p[0]}${p[1]}${p[2]}`;
+        if (p.length === 3) {
+            if (p[0].length === 4) return `${p[0]}${p[1].padStart(2, '0')}${p[2].padStart(2, '0')}`;
+            if (p[2].length === 4) return `${p[2]}${p[1].padStart(2, '0')}${p[0].padStart(2, '0')}`;
+        }
     }
     return dateStr;
 }
@@ -54,11 +71,9 @@ function openPDFDirectly(doc, fileName = `Report_${Date.now()}.pdf`) {
         const dataUri = doc.output('datauristring');
         const pdfBase64 = dataUri.split(',')[1];
 
-        // Direct launch in device's default viewer via AndroidBridge
         if (window.AndroidBridge && typeof window.AndroidBridge.openPDFDirectly === 'function') {
             window.AndroidBridge.openPDFDirectly(pdfBase64, fileName);
         } else {
-            // Browser fallback
             const a = document.createElement('a');
             a.href = dataUri;
             a.download = fileName;
@@ -553,7 +568,7 @@ async function renderSellerAvailableStockIndividual() {
     document.getElementById('seller-available-count').innerText = `${totalAvail} Available`;
 }
 
-// ================= PURCHASE ENTRY (WITH MANDATORY STICKY PRICE) =================
+// ================= PURCHASE ENTRY & DRAFT HANDLING =================
 function openPurchaseEntryPage() {
     openSubPage('page-purchase-entry');
     document.getElementById('pur-date').value = getISODateString();
@@ -582,7 +597,7 @@ function calculatePurchaseCost() {
     const priceInput = document.getElementById('pur-buying-price');
     const price = parseFloat(priceInput.value) || 0;
 
-    // Persist user price changes
+    // Persist price changes in memory
     if (priceInput.value && !isNaN(price) && price > 0) {
         rememberedPurchasePrice = priceInput.value;
         localStorage.setItem('lastPurchasePrice', rememberedPurchasePrice);
@@ -695,7 +710,7 @@ function addPurchaseDraft(event) {
 
     document.getElementById('pur-draft-count').innerText = pendingPurchaseDraft.length;
     
-    // Clear ticket inputs ONLY, keep price sticky for next entry
+    // Clear ticket inputs only, keep price sticky for next entry
     document.getElementById('pur-from').value = ''; 
     document.getElementById('pur-to').value = '';
     calculatePurchaseCost();
@@ -704,36 +719,90 @@ function addPurchaseDraft(event) {
 function openPurchaseDraftModal() {
     const tbody = document.getElementById('pur-draft-tbody');
     const tfoot = document.getElementById('pur-draft-tfoot');
-    tbody.innerHTML = ''; let q = 0, c = 0;
-    pendingPurchaseDraft.forEach((item, idx) => {
-        q += item.qty; c += item.cost_raw;
-        tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2">${idx+1}</td><td class="p-2">${item.item}</td><td class="p-2 font-bold">${item.series}</td><td class="p-2 font-mono text-[10px]">${item.ticket_range}</td><td class="p-2 font-bold text-purple-600">${item.qty}</td><td class="p-2 font-bold">₹${item.cost_raw.toFixed(2)}</td><td class="p-2 text-center"><button onclick="pendingPurchaseDraft.splice(${idx},1);openPurchaseDraftModal()" class="text-red-500"><i class="fa-solid fa-trash"></i></button></td></tr>`;
-    });
-    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-purple-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${c.toFixed(2)}</td></tr>`;
+    tbody.innerHTML = ''; 
+    let q = 0, c = 0;
+
+    if (pendingPurchaseDraft.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400">Draft is empty. Add ticket entries first.</td></tr>`;
+        tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-purple-600">0</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹0.00</td></tr>`;
+    } else {
+        pendingPurchaseDraft.forEach((item, idx) => {
+            q += item.qty; 
+            c += item.cost_raw;
+            tbody.innerHTML += `
+                <tr class="border-b border-slate-100">
+                    <td class="p-2">${idx + 1}</td>
+                    <td class="p-2">${item.item}</td>
+                    <td class="p-2 font-bold">${item.series}</td>
+                    <td class="p-2 font-mono text-[10px]">${item.ticket_range}</td>
+                    <td class="p-2 font-bold text-purple-600">${item.qty}</td>
+                    <td class="p-2 font-bold">₹${Number(item.cost_raw).toFixed(2)}</td>
+                    <td class="p-2 text-center">
+                        <button onclick="pendingPurchaseDraft.splice(${idx}, 1); document.getElementById('pur-draft-count').innerText = pendingPurchaseDraft.length; openPurchaseDraftModal();" class="text-red-500 hover:text-red-700">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+        tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-purple-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${c.toFixed(2)}</td></tr>`;
+    }
     toggleModal('purchase-draft-modal', true);
 }
 
+// Closes Purchase Draft Modal (Fixed missing declaration)
+function closePurchaseDraftModal() {
+    toggleModal('purchase-draft-modal', false);
+}
+
+// Closes Show Ticket Modal (Fixed missing declaration)
+function closeShowTicketModal() {
+    toggleModal('show-ticket-modal', false);
+}
+
 async function savePurchaseToStore() {
-    // If draft array is empty but form inputs are completed, auto-add first
-    if (pendingPurchaseDraft.length === 0) {
-        const group = document.getElementById('pur-group').value.trim();
-        const fromStr = document.getElementById('pur-from').value.trim();
-        const priceVal = document.getElementById('pur-buying-price').value.trim();
-
-        if (group && fromStr && priceVal) {
-            addPurchaseDraft(null);
+    try {
+        if (!currentMlotId) {
+            currentMlotId = localStorage.getItem('currentMlotId');
         }
-    }
+        if (!currentMlotId) {
+            alert("Error: MLOT ID session is missing. Please log out and log in again.");
+            return;
+        }
 
-    if (pendingPurchaseDraft.length === 0) { 
-        alert("Draft is empty. Add tickets first."); 
-        return; 
-    }
+        // If draft array is empty but form inputs are completed, auto-add first
+        if (pendingPurchaseDraft.length === 0) {
+            const group = document.getElementById('pur-group').value.trim();
+            const fromStr = document.getElementById('pur-from').value.trim();
+            const priceVal = document.getElementById('pur-buying-price').value.trim();
 
-    const { error } = await _supabase.from('purchase_store').insert(pendingPurchaseDraft);
-    if (error) {
-        alert("Error saving: " + error.message);
-    } else {
+            if (group && fromStr && priceVal) {
+                addPurchaseDraft(null);
+            }
+        }
+
+        if (pendingPurchaseDraft.length === 0) { 
+            alert("Draft is empty. Add tickets first."); 
+            return; 
+        }
+
+        // Prepare clean records with validated DD/MM/YYYY date format
+        const cleanDraft = pendingPurchaseDraft.map(item => ({
+            date: formatToDBDate(item.date),
+            item: item.item,
+            series: item.series,
+            ticket_range: item.ticket_range,
+            qty: Number(item.qty),
+            cost_raw: Number(item.cost_raw),
+            mlot_id: currentMlotId
+        }));
+
+        const { error } = await _supabase.from('purchase_store').insert(cleanDraft);
+        if (error) {
+            alert("Error saving to store: " + error.message);
+            return;
+        }
+
         alert("Saved to store inventory successfully!");
         pendingPurchaseDraft = [];
         document.getElementById('pur-draft-count').innerText = '0';
@@ -745,8 +814,11 @@ async function savePurchaseToStore() {
             document.getElementById('pur-buying-price').value = rememberedPurchasePrice;
         }
 
-        toggleModal('purchase-draft-modal', false);
+        closePurchaseDraftModal();
         switchTab('purchase');
+
+    } catch (err) {
+        alert("Unexpected error while saving purchase: " + err.message);
     }
 }
 
@@ -939,7 +1011,6 @@ function calculateUnsoldPrice() {
     document.getElementById('unsold-price').value = `₹${((calc.qty || 0) * activeUnsoldSetPrice).toFixed(2)}`;
 }
 
-// RESTRICTION: Seller can only return tickets purchased from MLOT user
 async function validateSellerPurchasedTickets(mlotId, sellerCode, item, date, ticketRangeStr) {
     const { data: salesRecords } = await _supabase.from('sales_records').select('*').eq('mlot_id', mlotId).eq('code', sellerCode).eq('item', item).eq('date', date);
     let sellerPurchasedSet = new Set();
@@ -1310,14 +1381,12 @@ async function generateSaleReportPDFDoc() {
     return { doc, selectedCode, sellerName: sellerNameStr, sellerPhone: sellerPhoneStr };
 }
 
-// 1. Download Report (Directly opens in native PDF viewer)
 async function downloadSaleReportPDF() {
     const reportData = await generateSaleReportPDFDoc();
     const fileName = reportData.selectedCode ? `SaleReport_${reportData.selectedCode}.pdf` : `SaleReport_General.pdf`;
     openPDFDirectly(reportData.doc, fileName);
 }
 
-// 2. Send Report directly to selected seller on WhatsApp
 async function sendSaleReportToWhatsApp() {
     const reportData = await generateSaleReportPDFDoc();
     if (!reportData.selectedCode) {
@@ -1337,7 +1406,6 @@ async function sendSaleReportToWhatsApp() {
         if (window.AndroidBridge && typeof window.AndroidBridge.sharePDFToWhatsApp === 'function') {
             window.AndroidBridge.sharePDFToWhatsApp(pdfBase64, fileName, reportData.sellerPhone);
         } else {
-            // Browser fallback
             const cleanPhone = reportData.sellerPhone.replace(/[^0-9]/g, '');
             const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
             window.open(`https://wa.me/${phoneWithCode}?text=Hello%20${encodeURIComponent(reportData.sellerName)},%20please%20find%20your%20latest%20Sale%20Report.`, '_blank');
@@ -1741,7 +1809,6 @@ async function generateLedgerPDFObj() {
     return doc;
 }
 
-// Generates Ledger PDF and opens directly in native PDF viewer
 async function downloadOrOpenLedgerReport() {
     const doc = await generateLedgerPDFObj();
     const dateFilter = formatToDBDate(document.getElementById('ledger-filter-date').value || getISODateString());
