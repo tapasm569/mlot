@@ -41,30 +41,32 @@ function convertDateToComparable(dateStr) {
     return dateStr;
 }
 
-// --- DIRECT IN-APP PDF VIEWER HELPER ---
+// --- NATIVE ANDROID PDF SAVER BRIDGE (NO BLACK/BLANK SCREEN) ---
 function openPDFDirectly(doc) {
     if (!doc) {
         alert("Error: PDF document object is empty.");
         return;
     }
     try {
-        const pdfDataUri = doc.output('datauristring');
-        const iframe = document.getElementById('pdf-iframe');
-        if (iframe) {
-            iframe.src = pdfDataUri;
-            toggleModal('pdf-viewer-modal', true);
+        const dataUri = doc.output('datauristring');
+        const pdfBase64 = dataUri.split(',')[1];
+        const filename = "MLOT_Report_" + Date.now() + ".pdf";
+
+        // Save via native Android bridge directly to Downloads folder
+        if (window.AndroidBridge && typeof window.AndroidBridge.savePDFFromBase64 === 'function') {
+            window.AndroidBridge.savePDFFromBase64(pdfBase64, filename);
         } else {
-            window.location.href = pdfDataUri;
+            // Browser fallback
+            const a = document.createElement('a');
+            a.href = dataUri;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         }
     } catch (err) {
-        alert("Could not open PDF directly: " + err.message);
+        alert("Could not generate PDF: " + err.message);
     }
-}
-
-function closePDFViewerModal() {
-    toggleModal('pdf-viewer-modal', false);
-    const iframe = document.getElementById('pdf-iframe');
-    if (iframe) iframe.src = '';
 }
 
 // --- KEYBOARD & FOOTER FIX ---
@@ -1149,7 +1151,7 @@ async function filterSaleReport() {
     tfoot.innerHTML = `<tr><td colspan="6" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
 }
 
-// Generates Sale Report PDF and opens it directly inside the app (Download Receipt)
+// Generates Sale Report PDF (Download Receipt)
 async function downloadSaleReportPDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -1592,7 +1594,7 @@ async function generateLedgerPDFObj() {
     return doc;
 }
 
-// Generates Ledger PDF and opens it directly inside the app (Download Report)
+// Generates Ledger PDF (Download Report)
 async function downloadOrOpenLedgerReport() {
     const doc = await generateLedgerPDFObj();
     openPDFDirectly(doc);
