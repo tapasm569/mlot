@@ -98,20 +98,21 @@ window.addEventListener('focusout', (e) => {
     }
 });
 
-// --- SWIPE GESTURE NAVIGATION FOR MLOT USERS ---
+// --- SMOOTH SWIPE GESTURE NAVIGATION FOR MLOT USERS ---
 let touchStartX = 0;
 let touchStartY = 0;
 
 window.addEventListener('touchstart', e => {
     if (currentUserRole !== 'mlot') return;
-    if (e.target.closest('input, select, textarea, button, table, div[id$="-modal"], .absolute')) return;
+    // Only block swipe if interacting with form inputs, buttons, modals, or horizontal tables
+    if (e.target.closest('input, textarea, select, button, div[id$="-modal"], table, .overflow-x-auto')) return;
     touchStartX = e.changedTouches[0].screenX;
     touchStartY = e.changedTouches[0].screenY;
 }, { passive: true });
 
 window.addEventListener('touchend', e => {
     if (currentUserRole !== 'mlot') return;
-    if (e.target.closest('input, select, textarea, button, table, div[id$="-modal"], .absolute')) return;
+    if (e.target.closest('input, textarea, select, button, div[id$="-modal"], table, .overflow-x-auto')) return;
     let touchEndX = e.changedTouches[0].screenX;
     let touchEndY = e.changedTouches[0].screenY;
     handleSwipeGesture(touchStartX, touchStartY, touchEndX, touchEndY);
@@ -121,7 +122,8 @@ function handleSwipeGesture(startX, startY, endX, endY) {
     const diffX = endX - startX;
     const diffY = endY - startY;
     
-    if (Math.abs(diffX) > 60 && Math.abs(diffX) > Math.abs(diffY) * 1.5) {
+    // Threshold: Minimum 40px horizontal movement
+    if (Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY) * 1.2) {
         const tabs = ['sale', 'purchase', 'master', 'account'];
         let currentTabName = 'sale';
         tabs.forEach(t => {
