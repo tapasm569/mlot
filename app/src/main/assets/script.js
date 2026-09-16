@@ -71,9 +71,11 @@ function openPDFDirectly(doc, fileName = `Report_${Date.now()}.pdf`) {
         const dataUri = doc.output('datauristring');
         const pdfBase64 = dataUri.split(',')[1];
 
+        // Direct launch in device's default viewer via AndroidBridge
         if (window.AndroidBridge && typeof window.AndroidBridge.openPDFDirectly === 'function') {
             window.AndroidBridge.openPDFDirectly(pdfBase64, fileName);
         } else {
+            // Browser fallback
             const a = document.createElement('a');
             a.href = dataUri;
             a.download = fileName;
@@ -568,7 +570,7 @@ async function renderSellerAvailableStockIndividual() {
     document.getElementById('seller-available-count').innerText = `${totalAvail} Available`;
 }
 
-// ================= PURCHASE ENTRY & DRAFT HANDLING =================
+// ================= PURCHASE ENTRY (WITH MANDATORY STICKY PRICE) =================
 function openPurchaseEntryPage() {
     openSubPage('page-purchase-entry');
     document.getElementById('pur-date').value = getISODateString();
@@ -750,12 +752,12 @@ function openPurchaseDraftModal() {
     toggleModal('purchase-draft-modal', true);
 }
 
-// Closes Purchase Draft Modal (Fixed missing declaration)
+// Closes Purchase Draft Modal
 function closePurchaseDraftModal() {
     toggleModal('purchase-draft-modal', false);
 }
 
-// Closes Show Ticket Modal (Fixed missing declaration)
+// Closes Show Ticket Modal
 function closeShowTicketModal() {
     toggleModal('show-ticket-modal', false);
 }
@@ -772,9 +774,9 @@ async function savePurchaseToStore() {
 
         // If draft array is empty but form inputs are completed, auto-add first
         if (pendingPurchaseDraft.length === 0) {
-            const group = document.getElementById('pur-group').value.trim();
-            const fromStr = document.getElementById('pur-from').value.trim();
-            const priceVal = document.getElementById('pur-buying-price').value.trim();
+            const group = document.getElementById('pur-group')?.value.trim();
+            const fromStr = document.getElementById('pur-from')?.value.trim();
+            const priceVal = document.getElementById('pur-buying-price')?.value.trim();
 
             if (group && fromStr && priceVal) {
                 addPurchaseDraft(null);
@@ -782,24 +784,28 @@ async function savePurchaseToStore() {
         }
 
         if (pendingPurchaseDraft.length === 0) { 
-            alert("Draft is empty. Add tickets first."); 
+            alert("Draft is empty! Please enter Group, Ticket Range, and Price first."); 
             return; 
         }
 
         // Prepare clean records with validated DD/MM/YYYY date format
         const cleanDraft = pendingPurchaseDraft.map(item => ({
             date: formatToDBDate(item.date),
-            item: item.item,
-            series: item.series,
-            ticket_range: item.ticket_range,
-            qty: Number(item.qty),
-            cost_raw: Number(item.cost_raw),
-            mlot_id: currentMlotId
+            item: String(item.item),
+            series: String(item.series),
+            ticket_range: String(item.ticket_range),
+            qty: parseInt(item.qty) || 0,
+            cost_raw: parseFloat(item.cost_raw) || 0.00,
+            mlot_id: String(currentMlotId)
         }));
 
-        const { error } = await _supabase.from('purchase_store').insert(cleanDraft);
+        const { data, error } = await _supabase
+            .from('purchase_store')
+            .insert(cleanDraft);
+
         if (error) {
-            alert("Error saving to store: " + error.message);
+            console.error("Supabase purchase_store error:", error);
+            alert("Database Error (" + error.code + "): " + error.message + "\n\nTip: Ensure the date column in purchase_store is TEXT and RLS allows INSERT.");
             return;
         }
 
@@ -818,7 +824,8 @@ async function savePurchaseToStore() {
         switchTab('purchase');
 
     } catch (err) {
-        alert("Unexpected error while saving purchase: " + err.message);
+        console.error("Exception in savePurchaseToStore:", err);
+        alert("Unexpected script error: " + err.message);
     }
 }
 
@@ -1012,7 +1019,7 @@ function calculateUnsoldPrice() {
 }
 
 async function validateSellerPurchasedTickets(mlotId, sellerCode, item, date, ticketRangeStr) {
-    const { data: salesRecords } = await _supabase.from('sales_records').select('*').eq('mlot_id', mlotId).eq('code', sellerCode).eq('item', item).eq('date', date);
+    const { data: salesRecords } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId).eq('code', sellerCode).eq('item', item).eq('date', date);
     let sellerPurchasedSet = new Set();
     (salesRecords || []).forEach(s => expandRangeToIndividualTickets(s.ticket_range).forEach(t => sellerPurchasedSet.add(t)));
     return expandRangeToIndividualTickets(ticketRangeStr).every(t => sellerPurchasedSet.has(t));
