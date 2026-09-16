@@ -14,12 +14,6 @@ function getISODateString(d = new Date()) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function getTomorrowISODateString() {
-    const d = new Date(); d.setDate(d.getDate() + 1);
-    return getISODateString(d);
-}
-
-// Converts YYYY-MM-DD (HTML input) to DD/MM/YYYY (Database format)
 function formatToDBDate(isoStr) {
     if (!isoStr) return '';
     if (isoStr.includes('/')) return isoStr;
@@ -27,7 +21,6 @@ function formatToDBDate(isoStr) {
     return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : isoStr;
 }
 
-// Converts DD/MM/YYYY (Database format) to YYYY-MM-DD (HTML input)
 function formatToISODate(dbStr) {
     if (!dbStr) return '';
     if (dbStr.includes('-')) return dbStr;
@@ -35,7 +28,6 @@ function formatToISODate(dbStr) {
     return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : dbStr;
 }
 
-// Converts any date format to YYYYMMDD string for safe chronological comparisons
 function convertDateToComparable(dateStr) {
     if (!dateStr) return '';
     if (dateStr.includes('/')) {
@@ -126,7 +118,7 @@ window.onload = function() {
             document.getElementById('app-header-title').innerText = `${bizName} (ID: ${currentMlotId})`;
             document.getElementById('footer-nav').classList.remove('hidden');
             updatePendingUnsoldBadge();
-            switchTab('sale');
+            switchTab('sale', false);
         } else if (savedRole === 'seller') {
             document.getElementById('app-header-title').innerText = `Seller Portal (${currentSellerCode})`;
             document.getElementById('footer-nav').classList.add('hidden');
@@ -271,10 +263,17 @@ async function approveMlotPayment(payId, mlotId) {
     await renewMlot(mlotId);
 }
 
-// ================= NAVIGATION =================
-function switchTab(tabName) {
+// ================= HISTORY-AWARE NAVIGATION & BACK GESTURE SUPPORT =================
+function switchTab(tabName, push = true) {
     document.querySelectorAll('.app-page').forEach(page => page.classList.add('hidden'));
-    document.getElementById(`page-${tabName}`).classList.remove('hidden');
+    
+    let targetPageId = `page-${tabName}`;
+    if (currentUserRole === 'seller' && tabName === 'account') {
+        targetPageId = 'page-seller-account';
+    }
+    
+    const targetElement = document.getElementById(targetPageId);
+    if (targetElement) targetElement.classList.remove('hidden');
 
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.className = "nav-btn flex flex-col items-center justify-center w-16 py-1 text-slate-400 transition-all";
@@ -285,6 +284,10 @@ function switchTab(tabName) {
     if (activeBtn) {
         activeBtn.className = tabName === 'master' ? "nav-btn flex flex-col items-center justify-center px-3 py-0.5 text-indigo-600 transition-all" : "nav-btn flex flex-col items-center justify-center w-16 py-1 text-indigo-600 transition-all";
         activeBtn.querySelector('span').className = "text-[10px] font-bold";
+    }
+
+    if (push) {
+        history.pushState({ type: 'tab', name: tabName }, '', '');
     }
 
     if (tabName === 'purchase') {
@@ -299,6 +302,40 @@ function switchTab(tabName) {
         renderMasterAndSaleTables();
     }
 }
+
+function openSubPage(sectionId, push = true) {
+    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
+    const el = document.getElementById(sectionId);
+    if (el) el.classList.remove('hidden');
+    if (push) {
+        history.pushState({ type: 'subpage', name: sectionId }, '', '');
+    }
+}
+
+// Android hardware back button & gesture navigation handler
+window.addEventListener('popstate', (event) => {
+    // 1. If any modal is open, close the modal first
+    const openModals = document.querySelectorAll('.absolute.inset-0.z-50:not(.hidden), div[id$="-modal"]:not(.hidden)');
+    for (let modal of openModals) {
+        if (modal.id === 'login-screen') continue;
+        modal.classList.add('hidden');
+        event.preventDefault();
+        return;
+    }
+
+    // 2. Handle page history state back navigation
+    if (event.state && event.state.type === 'tab') {
+        switchTab(event.state.name, false);
+    } else if (event.state && event.state.type === 'subpage') {
+        openSubPage(event.state.name, false);
+    } else {
+        if (currentUserRole === 'mlot') {
+            switchTab('sale', false);
+        } else if (currentUserRole === 'seller') {
+            openSellerAccountHome();
+        }
+    }
+});
 
 // ================= UTILITIES & RANGE PARSING =================
 function parseRangeQuantity(series, fromStr, toStr) {
@@ -354,26 +391,26 @@ async function loadSellerProfileName() {
 function openSellerPage(pageKey) {
     document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
     if (pageKey === 'purchase') {
-        document.getElementById('page-seller-purchase').classList.remove('hidden');
+        openSubPage('page-seller-purchase');
         document.getElementById('seller-stock-filter-date').value = getISODateString();
         renderSellerAvailableStockIndividual();
     } else if (pageKey === 'unsold') {
-        document.getElementById('page-seller-unsold').classList.remove('hidden');
+        openSubPage('page-seller-unsold');
         document.getElementById('s-unsold-date').value = getISODateString();
         document.getElementById('s-unsold-q-date').value = getISODateString();
         switchSellerUnsoldMode('detailed');
     } else if (pageKey === 'sold') {
-        document.getElementById('page-seller-sold').classList.remove('hidden');
+        openSubPage('page-seller-sold');
         renderSellerSoldTable();
     } else if (pageKey === 'history') {
-        document.getElementById('page-seller-history').classList.remove('hidden');
+        openSubPage('page-seller-history');
         renderSellerPaymentHistory();
     } else if (pageKey === 'ledger') {
-        document.getElementById('page-seller-ledger').classList.remove('hidden');
+        openSubPage('page-seller-ledger');
         document.getElementById('seller-ledger-filter-date').value = getISODateString();
         renderSellerLedger();
     } else if (pageKey === 'payment') {
-        document.getElementById('page-seller-payment').classList.remove('hidden');
+        openSubPage('page-seller-payment');
         selectPayType('total');
     }
 }
@@ -491,8 +528,7 @@ async function renderSellerAvailableStockIndividual() {
 
 // ================= PURCHASE ENTRY & AUTO-DRAFT =================
 function openPurchaseEntryPage() {
-    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    document.getElementById('page-purchase-entry').classList.remove('hidden');
+    openSubPage('page-purchase-entry');
     document.getElementById('pur-date').value = getISODateString();
     document.getElementById('pur-buying-price').value = '';
     onPurchaseItemChange();
@@ -585,8 +621,7 @@ async function savePurchaseToStore() {
 
 // ================= SALE ENTRY & AUTO-DRAFT =================
 function openSaleEntryPage() {
-    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    document.getElementById('page-sale-entry').classList.remove('hidden');
+    openSubPage('page-sale-entry');
     document.getElementById('sale-date').value = getISODateString();
     updateSellerCodeDropdown();
     onItemChange();
@@ -707,8 +742,7 @@ async function submitTicketEntries() {
 
 // ================= UNSOLD & QUICK ENTRY (WITH RESTRICTIONS) =================
 function openUnsoldTicketPage() {
-    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    document.getElementById('page-unsold-ticket').classList.remove('hidden');
+    openSubPage('page-unsold-ticket');
     document.getElementById('unsold-date').value = getISODateString();
     document.getElementById('unsold-q-date').value = getISODateString();
     updateUnsoldCodeDropdown();
@@ -933,8 +967,7 @@ async function submitSellerUnsoldQuickEntry(event) {
 
 // ================= GENERAL CRUD & MISC =================
 function openAddSellerPage() {
-    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    document.getElementById('page-add-seller').classList.remove('hidden');
+    openSubPage('page-add-seller');
     document.getElementById('seller-userid').value = currentMlotId || '';
     calculateAddSellerPrice();
 }
@@ -1141,8 +1174,7 @@ async function downloadSaleReportPDF() {
 
 // ================= TRACKERS & VERIFICATIONS (WITH REJECT) =================
 function openSoldTicketPage() {
-    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    document.getElementById('page-sold-ticket').classList.remove('hidden');
+    openSubPage('page-sold-ticket');
     document.getElementById('sold-filter-date').value = getISODateString();
     renderSoldTicketSellers();
 }
@@ -1297,8 +1329,7 @@ async function rejectSingleUnsold(id) {
 }
 
 async function openPaymentHistoryPage() {
-    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    document.getElementById('page-payment-history').classList.remove('hidden');
+    openSubPage('page-payment-history');
     renderMlotPaymentHistoryTable();
 }
 
@@ -1340,8 +1371,7 @@ async function rejectPayment(id) {
 
 // ================= PURCHASE TICKETS & LEDGER =================
 async function openMlotPurchaseTicketPage() {
-    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    document.getElementById('page-mlot-purchase-ticket').classList.remove('hidden');
+    openSubPage('page-mlot-purchase-ticket');
     const filterDateInput = document.getElementById('mlot-purchase-filter-date');
     if (!filterDateInput.value) { filterDateInput.value = getISODateString(); }
     renderMlotPurchaseTicketTable();
@@ -1442,8 +1472,7 @@ async function submitPayLater() {
 }
 
 async function openLedgerBookPage() {
-    document.querySelectorAll('.app-page').forEach(p => p.classList.add('hidden'));
-    document.getElementById('page-ledger-book').classList.remove('hidden');
+    openSubPage('page-ledger-book');
     document.getElementById('ledger-filter-date').value = getISODateString();
     renderLedgerBookTable();
 }
@@ -1501,22 +1530,6 @@ async function enableLedgerEdit(code) {
     }
 }
 
-async function showLedgerPDF() {
-    const doc = await generateLedgerPDFObj();
-    
-    // Generate PDF as a Base64 Data URI instead of a blob URL
-    const pdfDataUri = doc.output('datauristring');
-    
-    // Open directly in the WebView / mobile browser viewer
-    const win = window.open();
-    if (win) {
-        win.document.write(`<iframe src="${pdfDataUri}" style="width:100%; height:100%; border:none;"></iframe>`);
-    } else {
-        // Fallback if popup is blocked: navigate current window or trigger data link
-        window.location.href = pdfDataUri;
-    }
-}
-
 async function generateLedgerPDFObj() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -1554,5 +1567,13 @@ async function generateLedgerPDFObj() {
 }
 
 async function generateLedgerPDF() { (await generateLedgerPDFObj()).save(`Ledger_Report_${formatToDBDate(getISODateString())}.pdf`); }
-async function showLedgerPDF() { window.open((await generateLedgerPDFObj()).output('bloburl'), '_blank'); }
+async function showLedgerPDF() { 
+    const doc = await generateLedgerPDFObj();
+    if (doc) {
+        const pdfDataUri = doc.output('datauristring');
+        const win = window.open();
+        if (win) { win.document.write(`<iframe src="${pdfDataUri}" style="width:100%; height:100%; border:none;"></iframe>`); } 
+        else { window.location.href = pdfDataUri; }
+    }
+}
 async function downloadLedgerPDF() { await generateLedgerPDF(); }
