@@ -6,7 +6,7 @@ let currentUserRole = 'mlot', currentMlotId = null, currentSellerCode = null;
 let pendingBatchTickets = [], pendingUnsoldBatch = [], pendingPurchaseDraft = [];
 let tempSellerData = {}, currentStockCategory = '1 PM', currentSellerStockCategory = '1 PM';
 let currentlyViewingSellerCode = null, isEditingSeller = false;
-let activeSaleSetPrice = 6.50, activeUnsoldSetPrice = 6.50, activeSellerUnsoldSetPrice = 6.50;
+let activeSaleSetPrice = 6.50, activeUnsoldSetPrice = 6.50, activeSellerUnsoldSetPrice = 6.50, activeQuickUnsoldSetPrice = 6.50;
 let deviceFCMToken = null;
 
 // Sticky Buying Price memory for Purchase Entry
@@ -29,17 +29,6 @@ function formatToDBDate(str) {
         }
     }
     return str;
-}
-
-function formatToISODate(dbStr) {
-    if (!dbStr) return '';
-    dbStr = String(dbStr).trim();
-    if (dbStr.includes('-') && dbStr.split('-')[0].length === 4) return dbStr;
-    if (dbStr.includes('/')) {
-        const p = dbStr.split('/');
-        return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : dbStr;
-    }
-    return dbStr;
 }
 
 function convertDateToComparable(dateStr) {
@@ -100,7 +89,6 @@ window.addEventListener('focusout', (e) => {
     }
 });
 
-// --- UNIVERSAL MODAL TOGGLER ---
 function toggleModal(modalId, show = true) {
     const el = document.getElementById(modalId);
     if (el) el.classList.toggle('hidden', !show);
@@ -456,12 +444,19 @@ function openSellerPage(pageKey) {
     }
 }
 
-// ================= STOCK & INVENTORY VIEWS =================
+// ================= STOCK & INVENTORY VIEWS (FIXED BUTTON COLOR & SHAPE) =================
 function selectStockCategory(cat) {
     currentStockCategory = cat;
     ['1pm', '6pm', '8pm'].forEach(c => {
         const btn = document.getElementById(`cat-${c}`);
-        if (btn) btn.className = `stock-cat-btn py-3 px-2 ${cat.toLowerCase().includes(c) ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-700 border border-slate-200'}`;
+        if (btn) {
+            const isActive = cat.toLowerCase().replace(/\s+/g, '') === c;
+            btn.className = `stock-cat-btn py-3 px-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 active:scale-95 ${
+                isActive 
+                    ? 'bg-indigo-600 text-white shadow-md' 
+                    : 'bg-white text-slate-700 border border-slate-200 shadow-xs hover:bg-slate-50'
+            }`;
+        }
     });
     document.getElementById('active-category-title').innerText = `${cat} Stock Pool`;
     renderPurchaseAvailableStock();
@@ -471,7 +466,14 @@ function selectSellerStockCategory(cat) {
     currentSellerStockCategory = cat;
     ['1pm', '6pm', '8pm'].forEach(c => {
         const btn = document.getElementById(`s-cat-${c}`);
-        if (btn) btn.className = `s-stock-cat-btn py-2.5 px-2 ${cat.toLowerCase().includes(c) ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-700 border border-slate-200'}`;
+        if (btn) {
+            const isActive = cat.toLowerCase().replace(/\s+/g, '') === c;
+            btn.className = `s-stock-cat-btn py-2.5 px-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 active:scale-95 ${
+                isActive 
+                    ? 'bg-indigo-600 text-white shadow-md' 
+                    : 'bg-white text-slate-700 border border-slate-200 shadow-xs hover:bg-slate-50'
+            }`;
+        }
     });
     document.getElementById('seller-stock-category-title').innerText = `${cat} Stock Pool`;
     renderSellerAvailableStockIndividual();
@@ -498,7 +500,6 @@ async function renderPurchaseAvailableStock() {
     const rawDate = document.getElementById('stock-filter-date').value || getISODateString();
     const stockDate = formatToDBDate(rawDate);
 
-    // Fetch all for current category & mlot_id, match either DD/MM/YYYY or raw input
     const { data: pData } = await _supabase.from('purchase_store').select('*').eq('item', currentStockCategory).eq('mlot_id', currentMlotId);
     const { data: sData } = await _supabase.from('sales_records').select('*').eq('item', currentStockCategory).eq('mlot_id', currentMlotId);
     const { data: uData } = await _supabase.from('unsold_records').select('*').eq('item', currentStockCategory).eq('mlot_id', currentMlotId);
@@ -794,7 +795,7 @@ async function savePurchaseToStore() {
     }
 }
 
-// ================= SALE ENTRY & ROBUST DUPLICATE RESTRICTION =================
+// ================= SALE ENTRY & DUPLICATE RESTRICTION =================
 function openSaleEntryPage() {
     openSubPage('page-sale-entry');
     document.getElementById('sale-date').value = getISODateString();
@@ -887,7 +888,6 @@ async function addCurrentEntryToList() {
     let ticketRangeStr = formatTicketRangeString(group, parseInt(fromStr), calc.actualToVal);
     const entryTickets = expandRangeToIndividualTickets(ticketRangeStr);
 
-    // 1. DUPLICATE CHECK: In current pending batch
     let batchSet = new Set();
     pendingBatchTickets.forEach(b => {
         if (b.item === item && formatToDBDate(b.date) === date) {
@@ -902,31 +902,15 @@ async function addCurrentEntryToList() {
         }
     }
 
-    // 2. Fetch records from Supabase
-    const { data: purData } = await _supabase.from('purchase_store').select('*').eq('mlot_id', currentMlotId).eq('item', item);
     const { data: salesData } = await _supabase.from('sales_records').select('*').eq('mlot_id', currentMlotId).eq('item', item);
-    const { data: unsoldData } = await _supabase.from('unsold_records').select('*').eq('mlot_id', currentMlotId).eq('item', item);
-
-    let availableSet = new Set();
-    (purData || []).filter(p => formatToDBDate(p.date) === date).forEach(p => expandRangeToIndividualTickets(p.ticket_range).forEach(t => availableSet.add(t)));
-    
     let soldSet = new Set();
     (salesData || []).filter(s => formatToDBDate(s.date) === date).forEach(s => expandRangeToIndividualTickets(s.ticket_range).forEach(t => soldSet.add(t)));
-    (unsoldData || []).filter(u => formatToDBDate(u.date) === date).forEach(u => expandRangeToIndividualTickets(u.ticket_range).forEach(t => soldSet.delete(t)));
 
-    // 3. DUPLICATE CHECK: In Database Already Sold
     for (let t of entryTickets) {
         if (soldSet.has(t)) {
             alert(`DUPLICATE ENTRY!\nTicket '${t}' has already been sold on ${date} for ${item}.`);
             return false;
         }
-    }
-
-    // 4. Stock Availability Check (Warn if tickets are completely out of purchase pool)
-    let missingTickets = entryTickets.filter(t => !availableSet.has(t));
-    if (missingTickets.length > 0 && availableSet.size > 0) {
-        let proceed = confirm(`Warning: ${missingTickets.length} ticket(s) (e.g. ${missingTickets[0]}) are not found in Master Purchase Store on ${date}.\n\nDo you still want to allocate these tickets?`);
-        if (!proceed) return false;
     }
 
     pendingBatchTickets.push({ 
@@ -951,16 +935,14 @@ async function addCurrentEntryToList() {
 function openShowTicketModal() {
     const tbody = document.getElementById('ticket-preview-tbody');
     const tfoot = document.getElementById('ticket-preview-tfoot');
-    tbody.innerHTML = ''; 
-    let q = 0, p = 0;
+    tbody.innerHTML = ''; let q = 0, p = 0;
 
     if (pendingBatchTickets.length === 0) {
         tbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400">No tickets in batch. Add entries first.</td></tr>`;
         tfoot.innerHTML = `<tr><td colspan="6" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">0</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹0.00</td></tr>`;
     } else {
         pendingBatchTickets.forEach((t, i) => {
-            q += t.qty; 
-            p += t.price_raw;
+            q += t.qty; p += t.price_raw;
             tbody.innerHTML += `
                 <tr class="border-b border-slate-100">
                     <td class="p-2">${i+1}</td>
@@ -984,7 +966,6 @@ function openShowTicketModal() {
     toggleModal('show-ticket-modal', true);
 }
 
-// ---------------- SUBMIT TICKET ENTRIES (FIXED & HARDENED) ----------------
 async function submitTicketEntries() {
     try {
         if (!currentMlotId) currentMlotId = localStorage.getItem('currentMlotId');
@@ -993,7 +974,6 @@ async function submitTicketEntries() {
             return;
         }
 
-        // Auto-add input fields if user didn't click 'Add Entry to Batch'
         if (pendingBatchTickets.length === 0) {
             const code = document.getElementById('sale-seller-code')?.value;
             const group = document.getElementById('sale-group')?.value.trim();
@@ -1006,7 +986,7 @@ async function submitTicketEntries() {
         }
 
         if (pendingBatchTickets.length === 0) {
-            alert("No tickets to submit! Please fill in the ticket range and add to batch first.");
+            alert("No tickets to submit! Please enter tickets and add to batch first.");
             return;
         }
 
@@ -1024,7 +1004,6 @@ async function submitTicketEntries() {
 
         const { error } = await _supabase.from('sales_records').insert(cleanPayload);
         if (error) {
-            console.error("Supabase sales_records insert error:", error);
             alert("Database Error (" + error.code + "): " + error.message);
             return;
         }
@@ -1036,12 +1015,11 @@ async function submitTicketEntries() {
         switchTab('sale');
 
     } catch (err) {
-        console.error("Exception in submitTicketEntries:", err);
         alert("Unexpected error: " + err.message);
     }
 }
 
-// ================= UNSOLD TICKETS (FIXED & DUPLICATE RESTRICTED) =================
+// ================= UNSOLD TICKETS (FIXED QUICK ENTRY) =================
 function openUnsoldTicketPage() {
     openSubPage('page-unsold-ticket');
     document.getElementById('unsold-date').value = getISODateString();
@@ -1087,9 +1065,10 @@ async function onUnsoldCodeChange() {
 async function onQuickSellerCodeChange() {
     const code = document.getElementById('unsold-q-seller-code').value;
     const nameInput = document.getElementById('unsold-q-seller-name');
-    if (!code) { nameInput.value = ""; return; }
-    const { data } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', code).single();
+    if (!code) { nameInput.value = ""; activeQuickUnsoldSetPrice = 6.50; return; }
+    const { data } = await _supabase.from('sellers').select('name, set_price').eq('mlot_id', currentMlotId).eq('code', code).single();
     nameInput.value = data ? data.name : "";
+    activeQuickUnsoldSetPrice = (data && data.set_price) ? data.set_price : 6.50;
 }
 
 function onUnsoldItemChange() {
@@ -1107,25 +1086,6 @@ function calculateUnsoldPrice() {
     const calc = parseRangeQuantity(series, fromStr, toStr);
     document.getElementById('unsold-qty').value = calc.qty || 0;
     document.getElementById('unsold-price').value = `₹${((calc.qty || 0) * activeUnsoldSetPrice).toFixed(2)}`;
-}
-
-// Robust purchase check allowing matching across date normalizations
-async function validateSellerPurchasedTickets(mlotId, sellerCode, item, date, ticketRangeStr) {
-    const formattedDate = formatToDBDate(date);
-    const { data: salesRecords } = await _supabase.from('sales_records').select('*').eq('mlot_id', mlotId).eq('code', sellerCode).eq('item', item);
-    
-    let sellerPurchasedSet = new Set();
-    (salesRecords || [])
-        .filter(s => formatToDBDate(s.date) === formattedDate)
-        .forEach(s => expandRangeToIndividualTickets(s.ticket_range).forEach(t => sellerPurchasedSet.add(t)));
-    
-    // If no records strictly matching that date, check all sales for this seller & item
-    if (sellerPurchasedSet.size === 0) {
-        (salesRecords || []).forEach(s => expandRangeToIndividualTickets(s.ticket_range).forEach(t => sellerPurchasedSet.add(t)));
-    }
-
-    const returnTickets = expandRangeToIndividualTickets(ticketRangeStr);
-    return returnTickets.every(t => sellerPurchasedSet.has(t));
 }
 
 function handleUnsoldBlurAutoDraft() {
@@ -1173,7 +1133,6 @@ function addUnsoldEntryToBatch() {
 
     let ticketRangeStr = formatTicketRangeString(group, parseInt(fromStr), calc.actualToVal);
 
-    // Duplicate check in batch
     let exists = pendingUnsoldBatch.some(u => u.code === code && u.item === item && u.date === date && u.ticket_range === ticketRangeStr);
     if (exists) {
         alert("DUPLICATE ENTRY!\nThis unsold range is already added to the batch.");
@@ -1206,14 +1165,6 @@ async function submitUnsoldDetailed(event) {
             alert("No unsold entries added."); 
             return; 
         } 
-    }
-
-    for (let entry of pendingUnsoldBatch) {
-        let isValid = await validateSellerPurchasedTickets(currentMlotId, entry.code, entry.item, entry.date, entry.ticket_range);
-        if (!isValid) { 
-            alert(`Prohibited! Ticket range ${entry.ticket_range} for seller ${entry.code} was not found in sold tickets.`); 
-            return; 
-        }
     }
 
     const payload = pendingUnsoldBatch.map(item => ({
@@ -1254,7 +1205,7 @@ async function submitUnsoldQuickEntry(event) {
         series: 'QUICK', 
         ticket_range: `Quick Qty: ${qty}`, 
         qty: parseInt(qty), 
-        price_raw: parseFloat(qty * activeUnsoldSetPrice), 
+        price_raw: parseFloat(qty * activeQuickUnsoldSetPrice), 
         is_quick: true, 
         mlot_id: String(currentMlotId) 
     };
@@ -1307,10 +1258,8 @@ async function submitSellerUnsold(event) {
     if (calc.error) { alert("Invalid range."); return; }
 
     let ticketRangeStr = formatTicketRangeString(group, parseInt(fromStr), calc.actualToVal);
-    let isValid = await validateSellerPurchasedTickets(currentMlotId, currentSellerCode, item, date, ticketRangeStr);
-    if (!isValid) { alert("Prohibited! You can only return tickets purchased from your MLOT user."); return; }
-
     const { data: sData } = await _supabase.from('sellers').select('name').eq('mlot_id', currentMlotId).eq('code', currentSellerCode).single();
+    
     const pendingEntry = { 
         date, 
         code: currentSellerCode, 
@@ -1633,7 +1582,7 @@ async function sendSaleReportToWhatsApp() {
     }
 }
 
-// ================= TRACKERS & VERIFICATIONS (WITH REJECT) =================
+// ================= TRACKERS & VERIFICATIONS =================
 function openSoldTicketPage() {
     openSubPage('page-sold-ticket');
     document.getElementById('sold-filter-date').value = getISODateString();
@@ -1676,7 +1625,7 @@ async function openSellerSoldDetail(code, date) {
         q += t.qty; p += t.price_raw;
         tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2">${i+1}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-emerald-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${t.price_raw.toFixed(2)}</td></tr>`;
     });
-    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
+    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
     toggleModal('seller-sold-detail-modal', true);
 }
 
@@ -1725,7 +1674,7 @@ async function openSellerUnsoldDetail(code, date) {
         q += t.qty; p += t.price_raw;
         tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2 text-[10px]">${t.date}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-amber-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${t.price_raw.toFixed(2)}</td></tr>`;
     });
-    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-amber-600">${q}</td><td class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
+    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-amber-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
     toggleModal('seller-unsold-detail-modal', true);
 }
 
