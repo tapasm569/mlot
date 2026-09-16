@@ -1,12 +1,9 @@
 package com.example.webview;
 
 import android.os.Bundle;
-import android.os.Message;
 import android.util.Log;
-import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
@@ -17,6 +14,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Safely load your layout XML file
         try {
             setContentView(R.layout.activity_main);
             webView = findViewById(R.id.webView);
@@ -24,6 +22,7 @@ public class MainActivity extends AppCompatActivity {
             Log.e("MainActivity", "Could not load activity_main XML: " + e.getMessage());
         }
 
+        // Fallback safety: if layout ID is missing, create WebView dynamically
         if (webView == null) {
             webView = new WebView(this);
             setContentView(webView);
@@ -35,41 +34,19 @@ public class MainActivity extends AppCompatActivity {
             webSettings.setDomStorageEnabled(true);
             webSettings.setLoadWithOverviewMode(true);
             webSettings.setUseWideViewPort(true);
-
-            webSettings.setSupportMultipleWindows(true);
+            webSettings.setAllowFileAccess(true);
+            webSettings.setDatabaseEnabled(true);
             webSettings.setJavaScriptCanOpenWindowsAutomatically(true);
 
-            webView.setWebViewClient(new WebViewClient() {
-                @Override
-                public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                    if (url != null && url.startsWith("data:")) {
-                        view.loadUrl(url);
-                        return true;
-                    }
-                    return false;
-                }
-            });
-
-            webView.setWebChromeClient(new WebChromeClient() {
-                @Override
-                public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
-                    WebView newWebView = new WebView(MainActivity.this);
-                    newWebView.getSettings().setJavaScriptEnabled(true);
-                    
-                    WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
-                    transport.setWebView(newWebView);
-                    resultMsg.sendToTarget();
-                    return true;
-                }
-            });
-
+            // Load your local index.html from the assets folder
             webView.loadUrl("file:///android_asset/index.html");
             
         } catch (Exception e) {
-            Log.e("MainActivity", "Error configuring WebView: " + e.getMessage());
+            Log.e("MainActivity", "Error configuring WebView settings: " + e.getMessage());
         }
     }
 
+    // Handle the device's physical back button to navigate inside the WebView history
     @Override
     public void onBackPressed() {
         if (webView != null && webView.canGoBack()) {
