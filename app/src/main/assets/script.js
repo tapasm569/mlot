@@ -41,8 +41,8 @@ function convertDateToComparable(dateStr) {
     return dateStr;
 }
 
-// --- NATIVE ANDROID PDF SAVER BRIDGE (NO BLACK/BLANK SCREEN) ---
-function openPDFDirectly(doc) {
+// --- DIRECT PDF LAUNCHER & NATIVE ANDROID BRIDGE ---
+function openPDFDirectly(doc, fileName = `Report_${Date.now()}.pdf`) {
     if (!doc) {
         alert("Error: PDF document object is empty.");
         return;
@@ -50,22 +50,21 @@ function openPDFDirectly(doc) {
     try {
         const dataUri = doc.output('datauristring');
         const pdfBase64 = dataUri.split(',')[1];
-        const filename = "MLOT_Report_" + Date.now() + ".pdf";
 
-        // Save via native Android bridge directly to Downloads folder
-        if (window.AndroidBridge && typeof window.AndroidBridge.savePDFFromBase64 === 'function') {
-            window.AndroidBridge.savePDFFromBase64(pdfBase64, filename);
+        // Trigger native Android chooser to launch default PDF Viewer app directly
+        if (window.AndroidBridge && typeof window.AndroidBridge.openPDFDirectly === 'function') {
+            window.AndroidBridge.openPDFDirectly(pdfBase64, fileName);
         } else {
             // Browser fallback
             const a = document.createElement('a');
             a.href = dataUri;
-            a.download = filename;
+            a.download = fileName;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
         }
     } catch (err) {
-        alert("Could not generate PDF: " + err.message);
+        alert("Could not open PDF: " + err.message);
     }
 }
 
@@ -340,7 +339,6 @@ function openSubPage(sectionId, push = true) {
     }
 }
 
-// Android hardware back button & gesture navigation handler
 window.addEventListener('popstate', (event) => {
     const openModals = document.querySelectorAll('.absolute.inset-0.z-50:not(.hidden), div[id$="-modal"]:not(.hidden)');
     for (let modal of openModals) {
@@ -1151,25 +1149,30 @@ async function filterSaleReport() {
     tfoot.innerHTML = `<tr><td colspan="6" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
 }
 
-// Generates Sale Report PDF (Download Receipt)
-async function downloadSaleReportPDF() {
+// Helper function to build Sale Report PDF Object and retrieve metadata
+async function generateSaleReportPDFDoc() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    const f = document.getElementById('report-from-date').value;
-    const to = document.getElementById('report-to-date').value;
+    const f = document.getElementById('report-from-date').value || getISODateString();
+    const to = document.getElementById('report-to-date').value || getISODateString();
     const selectedCode = document.getElementById('report-filter-seller').value;
     const { data: mlotData } = await _supabase.from('mlot_users').select('*').eq('mlot_id', currentMlotId).maybeSingle();
-    let sellerNameStr = ""; let sellerPhoneStr = mlotData ? mlotData.mobile : "";
+
+    let sellerNameStr = "";
+    let sellerPhoneStr = "";
 
     if (selectedCode) {
         const { data: sData } = await _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId).eq('code', selectedCode).maybeSingle();
-        if (sData) { sellerNameStr = sData.name; sellerPhoneStr = sData.phone || sellerPhoneStr; }
+        if (sData) {
+            sellerNameStr = sData.name;
+            sellerPhoneStr = sData.phone || "";
+        }
     }
 
     doc.setFontSize(9);
     doc.text(`Generated Date: ${formatToDBDate(getISODateString())}`, 14, 15);
     doc.setFontSize(13);
-    doc.text(selectedCode ? `Seller Name: ${sellerNameStr} (${selectedCode})` : `${mlotData?.business_name || 'MLOT'} - Sale Receipt`, 105, 15, { align: 'center' });
+    doc.text(selectedCode ? `Seller Name: ${sellerNameStr} (${selectedCode})` : `${mlotData?.business_name || 'MLOT'} - Sale Report`, 105, 15, { align: 'center' });
     doc.setFontSize(9);
     if (sellerPhoneStr) doc.text(`Contact: ${sellerPhoneStr}`, 105, 21, { align: 'center' });
     doc.text(`Report Period: ${formatToDBDate(f)} to ${formatToDBDate(to)}`, 14, 27);
@@ -1197,7 +1200,44 @@ async function downloadSaleReportPDF() {
         styles: { fontSize: 8, cellPadding: 2 }
     });
 
-    openPDFDirectly(doc);
+    return { doc, selectedCode, sellerName: sellerNameStr, sellerPhone: sellerPhoneStr };
+}
+
+// 1. Download Report (Directly opens in native PDF viewer)
+async function downloadSaleReportPDF() {
+    const reportData = await generateSaleReportPDFDoc();
+    const fileName = reportData.selectedCode ? `SaleReport_${reportData.selectedCode}.pdf` : `SaleReport_General.pdf`;
+    openPDFDirectly(reportData.doc, fileName);
+}
+
+// 2. Send Report directly to selected seller on WhatsApp
+async function sendSaleReportToWhatsApp() {
+    const reportData = await generateSaleReportPDFDoc();
+    if (!reportData.selectedCode) {
+        alert("Please select a specific Seller Code from the dropdown to send via WhatsApp!");
+        return;
+    }
+    if (!reportData.sellerPhone) {
+        alert(`No mobile number registered for seller ${reportData.selectedCode}.`);
+        return;
+    }
+
+    try {
+        const dataUri = reportData.doc.output('datauristring');
+        const pdfBase64 = dataUri.split(',')[1];
+        const fileName = `SaleReport_${reportData.selectedCode}.pdf`;
+
+        if (window.AndroidBridge && typeof window.AndroidBridge.sharePDFToWhatsApp === 'function') {
+            window.AndroidBridge.sharePDFToWhatsApp(pdfBase64, fileName, reportData.sellerPhone);
+        } else {
+            // Browser fallback
+            const cleanPhone = reportData.sellerPhone.replace(/[^0-9]/g, '');
+            const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+            window.open(`https://wa.me/${phoneWithCode}?text=Hello%20${encodeURIComponent(reportData.sellerName)},%20please%20find%20your%20latest%20Sale%20Report.`, '_blank');
+        }
+    } catch (e) {
+        alert("WhatsApp share error: " + e.message);
+    }
 }
 
 // ================= TRACKERS & VERIFICATIONS (WITH REJECT) =================
@@ -1236,7 +1276,7 @@ async function openSellerSoldDetail(code, date) {
         q += t.qty; p += t.price_raw;
         tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2">${i+1}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-emerald-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${t.price_raw.toFixed(2)}</td></tr>`;
     });
-    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
+    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
     toggleModal('seller-sold-detail-modal', true);
 }
 
@@ -1283,7 +1323,7 @@ async function openSellerUnsoldDetail(code, date) {
         q += t.qty; p += t.price_raw;
         tbody.innerHTML += `<tr class="border-b border-slate-100"><td class="p-2 text-[10px]">${t.date}</td><td class="p-2">${t.item}</td><td class="p-2 font-bold">${t.series}</td><td class="p-2 font-mono text-[10px]">${t.ticket_range}</td><td class="p-2 text-amber-600 font-bold">${t.qty}</td><td class="p-2 font-bold">₹${t.price_raw.toFixed(2)}</td></tr>`;
     });
-    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-amber-600">${q}</td><td class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
+    tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-amber-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
     toggleModal('seller-unsold-detail-modal', true);
 }
 
@@ -1594,8 +1634,9 @@ async function generateLedgerPDFObj() {
     return doc;
 }
 
-// Generates Ledger PDF (Download Report)
+// Generates Ledger PDF and opens directly in native PDF viewer
 async function downloadOrOpenLedgerReport() {
     const doc = await generateLedgerPDFObj();
-    openPDFDirectly(doc);
+    const dateFilter = formatToDBDate(document.getElementById('ledger-filter-date').value || getISODateString());
+    openPDFDirectly(doc, `Ledger_Report_${dateFilter.replace(/\//g, '-')}.pdf`);
 }
