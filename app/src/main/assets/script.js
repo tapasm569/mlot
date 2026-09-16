@@ -9,6 +9,9 @@ let currentlyViewingSellerCode = null, isEditingSeller = false;
 let activeSaleSetPrice = 6.50, activeUnsoldSetPrice = 6.50, activeSellerUnsoldSetPrice = 6.50;
 let deviceFCMToken = null;
 
+// Sticky Buying Price memory for Purchase Entry
+let rememberedPurchasePrice = localStorage.getItem('lastPurchasePrice') || '';
+
 // --- DATE ADAPTERS FOR DD/MM/YYYY DATABASE FORMAT ---
 function getISODateString(d = new Date()) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -41,7 +44,7 @@ function convertDateToComparable(dateStr) {
     return dateStr;
 }
 
-// --- DIRECT PDF LAUNCHER & NATIVE ANDROID BRIDGE ---
+// --- DIRECT PDF VIEWER & NATIVE ANDROID BRIDGE ---
 function openPDFDirectly(doc, fileName = `Report_${Date.now()}.pdf`) {
     if (!doc) {
         alert("Error: PDF document object is empty.");
@@ -51,7 +54,7 @@ function openPDFDirectly(doc, fileName = `Report_${Date.now()}.pdf`) {
         const dataUri = doc.output('datauristring');
         const pdfBase64 = dataUri.split(',')[1];
 
-        // Trigger native Android chooser to launch default PDF Viewer app directly
+        // Direct launch in device's default viewer via AndroidBridge
         if (window.AndroidBridge && typeof window.AndroidBridge.openPDFDirectly === 'function') {
             window.AndroidBridge.openPDFDirectly(pdfBase64, fileName);
         } else {
@@ -550,11 +553,17 @@ async function renderSellerAvailableStockIndividual() {
     document.getElementById('seller-available-count').innerText = `${totalAvail} Available`;
 }
 
-// ================= PURCHASE ENTRY & AUTO-DRAFT =================
+// ================= PURCHASE ENTRY (WITH MANDATORY STICKY PRICE) =================
 function openPurchaseEntryPage() {
     openSubPage('page-purchase-entry');
     document.getElementById('pur-date').value = getISODateString();
-    document.getElementById('pur-buying-price').value = '';
+    
+    // Auto-fill sticky remembered price if set
+    const priceInput = document.getElementById('pur-buying-price');
+    if (priceInput && rememberedPurchasePrice) {
+        priceInput.value = rememberedPurchasePrice;
+    }
+    
     onPurchaseItemChange();
 }
 
@@ -570,28 +579,57 @@ function calculatePurchaseCost() {
     const series = document.getElementById('pur-series').value;
     const fromStr = document.getElementById('pur-from').value.trim();
     const toStr = document.getElementById('pur-to').value.trim();
-    const price = parseFloat(document.getElementById('pur-buying-price').value) || 0;
+    const priceInput = document.getElementById('pur-buying-price');
+    const price = parseFloat(priceInput.value) || 0;
+
+    // Persist user price changes
+    if (priceInput.value && !isNaN(price) && price > 0) {
+        rememberedPurchasePrice = priceInput.value;
+        localStorage.setItem('lastPurchasePrice', rememberedPurchasePrice);
+    }
+
     const calc = parseRangeQuantity(series, fromStr, toStr);
     document.getElementById('pur-qty').value = calc.qty || 0;
     document.getElementById('pur-total-amount').innerText = `₹${((calc.qty || 0) * price).toFixed(2)}`;
 }
 
 function handlePurchaseBlurAutoDraft() {
-    const group = document.getElementById('pur-group').value.trim();
+    const priceVal = document.getElementById('pur-buying-price').value.trim();
+    const price = parseFloat(priceVal);
+
+    // BLOCK ENTRY: User cannot auto-draft without setting price first
+    if (!priceVal || isNaN(price) || price <= 0) {
+        return;
+    }
+
+    const group = document.getElementById('pur-group').value.trim().toUpperCase();
     const fromStr = document.getElementById('pur-from').value.trim();
     const toStr = document.getElementById('pur-to').value.trim();
-    const price = parseFloat(document.getElementById('pur-buying-price').value);
 
-    if (group && fromStr && toStr && !isNaN(price)) {
+    if (group && fromStr) {
         const item = document.getElementById('pur-item').value;
         const series = document.getElementById('pur-series').value;
         const date = formatToDBDate(document.getElementById('pur-date').value || getISODateString());
         const calc = parseRangeQuantity(series, fromStr, toStr);
+
         if (!calc.error) {
-            let ticketRangeStr = formatTicketRangeString(group.toUpperCase(), parseInt(fromStr), calc.actualToVal);
-            let exists = pendingPurchaseDraft.some(d => d.date === date && d.item === item && d.series === series && d.ticket_range === ticketRangeStr);
+            let ticketRangeStr = formatTicketRangeString(group, parseInt(fromStr), calc.actualToVal);
+            
+            // Duplicate Check
+            let exists = pendingPurchaseDraft.some(d => 
+                d.date === date && d.item === item && d.series === series && d.ticket_range === ticketRangeStr
+            );
+
             if (!exists) {
-                pendingPurchaseDraft.push({ date, item, series, ticket_range: ticketRangeStr, qty: calc.qty, cost_raw: calc.qty * price, mlot_id: currentMlotId });
+                pendingPurchaseDraft.push({ 
+                    date, 
+                    item, 
+                    series, 
+                    ticket_range: ticketRangeStr, 
+                    qty: calc.qty, 
+                    cost_raw: calc.qty * price, 
+                    mlot_id: currentMlotId 
+                });
                 document.getElementById('pur-draft-count').innerText = pendingPurchaseDraft.length;
             }
         }
@@ -599,22 +637,67 @@ function handlePurchaseBlurAutoDraft() {
 }
 
 function addPurchaseDraft(event) {
-    event.preventDefault();
+    if (event) event.preventDefault();
+
+    const priceInput = document.getElementById('pur-buying-price');
+    const priceVal = priceInput.value.trim();
+    const price = parseFloat(priceVal);
+
+    // HARD BLOCK: Stop entry if price is missing or invalid
+    if (!priceVal || isNaN(price) || price <= 0) {
+        alert("Set Price is required! Please enter a valid Buying Price before adding tickets.");
+        priceInput.focus();
+        return;
+    }
+
+    // Retain sticky price
+    rememberedPurchasePrice = priceVal;
+    localStorage.setItem('lastPurchasePrice', rememberedPurchasePrice);
+
     const date = formatToDBDate(document.getElementById('pur-date').value || getISODateString());
     const item = document.getElementById('pur-item').value;
     const series = document.getElementById('pur-series').value;
     const group = document.getElementById('pur-group').value.trim().toUpperCase();
     const fromStr = document.getElementById('pur-from').value.trim();
     const toStr = document.getElementById('pur-to').value.trim();
-    const price = parseFloat(document.getElementById('pur-buying-price').value);
 
-    if (isNaN(price) || !group || !fromStr) { alert("Please provide valid details."); return; }
+    if (!group || !fromStr) { 
+        alert("Please enter both Group and Ticket Number."); 
+        return; 
+    }
+
     const calc = parseRangeQuantity(series, fromStr, toStr);
-    if (calc.error) { alert("Invalid range."); return; }
+    if (calc.error) { 
+        alert("Invalid ticket range."); 
+        return; 
+    }
 
-    pendingPurchaseDraft.push({ date, item, series, ticket_range: formatTicketRangeString(group, parseInt(fromStr), calc.actualToVal), qty: calc.qty, cost_raw: calc.qty * price, mlot_id: currentMlotId });
+    let ticketRangeStr = formatTicketRangeString(group, parseInt(fromStr), calc.actualToVal);
+
+    let exists = pendingPurchaseDraft.some(d => 
+        d.date === date && d.item === item && d.series === series && d.ticket_range === ticketRangeStr
+    );
+
+    if (exists) {
+        alert("This ticket range is already added in your draft!");
+        return;
+    }
+
+    pendingPurchaseDraft.push({ 
+        date, 
+        item, 
+        series, 
+        ticket_range: ticketRangeStr, 
+        qty: calc.qty, 
+        cost_raw: calc.qty * price, 
+        mlot_id: currentMlotId 
+    });
+
     document.getElementById('pur-draft-count').innerText = pendingPurchaseDraft.length;
-    document.getElementById('pur-from').value = ''; document.getElementById('pur-to').value = '';
+    
+    // Clear ticket inputs ONLY, keep price sticky for next entry
+    document.getElementById('pur-from').value = ''; 
+    document.getElementById('pur-to').value = '';
     calculatePurchaseCost();
 }
 
@@ -631,13 +714,37 @@ function openPurchaseDraftModal() {
 }
 
 async function savePurchaseToStore() {
-    if (pendingPurchaseDraft.length === 0) { alert("Draft is empty."); return; }
+    // If draft array is empty but form inputs are completed, auto-add first
+    if (pendingPurchaseDraft.length === 0) {
+        const group = document.getElementById('pur-group').value.trim();
+        const fromStr = document.getElementById('pur-from').value.trim();
+        const priceVal = document.getElementById('pur-buying-price').value.trim();
+
+        if (group && fromStr && priceVal) {
+            addPurchaseDraft(null);
+        }
+    }
+
+    if (pendingPurchaseDraft.length === 0) { 
+        alert("Draft is empty. Add tickets first."); 
+        return; 
+    }
+
     const { error } = await _supabase.from('purchase_store').insert(pendingPurchaseDraft);
-    if (error) alert("Error: " + error.message);
-    else {
-        alert("Saved to store inventory!");
+    if (error) {
+        alert("Error saving: " + error.message);
+    } else {
+        alert("Saved to store inventory successfully!");
         pendingPurchaseDraft = [];
         document.getElementById('pur-draft-count').innerText = '0';
+        
+        // Reset form and re-apply sticky price for future entries
+        document.getElementById('form-purchase-manual').reset();
+        document.getElementById('pur-date').value = getISODateString();
+        if (rememberedPurchasePrice) {
+            document.getElementById('pur-buying-price').value = rememberedPurchasePrice;
+        }
+
         toggleModal('purchase-draft-modal', false);
         switchTab('purchase');
     }
@@ -832,7 +939,7 @@ function calculateUnsoldPrice() {
     document.getElementById('unsold-price').value = `₹${((calc.qty || 0) * activeUnsoldSetPrice).toFixed(2)}`;
 }
 
-// RESTRICTION CHECK: Seller can only return tickets purchased from MLOT user
+// RESTRICTION: Seller can only return tickets purchased from MLOT user
 async function validateSellerPurchasedTickets(mlotId, sellerCode, item, date, ticketRangeStr) {
     const { data: salesRecords } = await _supabase.from('sales_records').select('*').eq('mlot_id', mlotId).eq('code', sellerCode).eq('item', item).eq('date', date);
     let sellerPurchasedSet = new Set();
@@ -1149,7 +1256,7 @@ async function filterSaleReport() {
     tfoot.innerHTML = `<tr><td colspan="6" class="p-2 text-right font-bold">Total:</td><td class="p-2 font-bold text-emerald-600">${q}</td><td colspan="2" class="p-2 font-bold text-indigo-600">₹${p.toFixed(2)}</td></tr>`;
 }
 
-// Helper function to build Sale Report PDF Object and retrieve metadata
+// Generates Sale Report PDF Document Object & Metadata
 async function generateSaleReportPDFDoc() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
