@@ -13,7 +13,7 @@ let deviceFCMToken = null;
 // Sticky Buying Price memory for Purchase Entry
 let rememberedPurchasePrice = localStorage.getItem('lastPurchasePrice') || '';
 
-// --- DATE ADAPTERS FOR DD/MM/YYYY (16/09/2026) FORMAT ---
+// --- DATE ADAPTERS FOR DD/MM/YYYY FORMAT ---
 function getISODateString(d = new Date()) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -24,16 +24,15 @@ function formatToDBDate(str) {
     if (str.includes('/')) {
         const parts = str.split('/');
         if (parts.length === 2) {
-            // Missing year e.g. "21/05" -> append current year 2026
             return `${parts[0]}/${parts[1]}/2026`;
         }
-        return str; // Already DD/MM/YYYY
+        return str;
     }
     if (str.includes('-')) {
         const p = str.split('-');
         if (p.length === 3) {
-            if (p[0].length === 4) return `${p[2]}/${p[1]}/${p[0]}`; // YYYY-MM-DD -> DD/MM/YYYY
-            if (p[2].length === 4) return `${p[0]}/${p[1]}/${p[2]}`; // DD-MM-YYYY -> DD/MM/YYYY
+            if (p[0].length === 4) return `${p[2]}/${p[1]}/${p[0]}`;
+            if (p[2].length === 4) return `${p[0]}/${p[1]}/${p[2]}`;
         }
     }
     return str;
@@ -82,7 +81,7 @@ function openPDFDirectly(doc, fileName = `Report_${Date.now()}.pdf`) {
     }
 }
 
-// --- KEYBOARD & FOOTER FIX ---
+// --- KEYBOARD & FOOTER AUTO-HIDE ---
 window.addEventListener('focusin', (e) => {
     if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) {
         document.getElementById('footer-nav')?.classList.add('hidden');
@@ -98,7 +97,7 @@ window.addEventListener('focusout', (e) => {
     }
 });
 
-// --- ROBUST TOUCH SWIPE NAVIGATION FOR ANDROID WEBVIEW ---
+// ================= WHATSAPP-STYLE HORIZONTAL SWIPE NAVIGATION =================
 let touchStartX = 0;
 let touchStartY = 0;
 
@@ -117,15 +116,16 @@ window.addEventListener('touchend', e => {
     if (e.changedTouches && e.changedTouches.length > 0) {
         let touchEndX = e.changedTouches[0].clientX;
         let touchEndY = e.changedTouches[0].clientY;
-        handleSwipeGesture(touchStartX, touchStartY, touchEndX, touchEndY);
+        handleWhatsAppSwipe(touchStartX, touchStartY, touchEndX, touchEndY);
     }
 }, { passive: true });
 
-function handleSwipeGesture(startX, startY, endX, endY) {
+function handleWhatsAppSwipe(startX, startY, endX, endY) {
     const diffX = endX - startX;
     const diffY = endY - startY;
-    
-    if (Math.abs(diffX) > 45 && Math.abs(diffX) > Math.abs(diffY)) {
+
+    // Minimum 40px horizontal swipe threshold, keeping movement mostly horizontal
+    if (Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY) * 1.2) {
         const tabs = ['sale', 'purchase', 'master', 'account'];
         let currentTabName = 'sale';
         tabs.forEach(t => {
@@ -139,9 +139,15 @@ function handleSwipeGesture(startX, startY, endX, endY) {
         if (currentIndex === -1) return;
 
         if (diffX < 0) {
-            if (currentIndex < tabs.length - 1) switchTab(tabs[currentIndex + 1]);
+            // Swiped Left -> Move Next (Slide in from Right)
+            if (currentIndex < tabs.length - 1) {
+                switchTab(tabs[currentIndex + 1], true, 'left');
+            }
         } else {
-            if (currentIndex > 0) switchTab(tabs[currentIndex - 1]);
+            // Swiped Right -> Move Previous (Slide in from Left)
+            if (currentIndex > 0) {
+                switchTab(tabs[currentIndex - 1], true, 'right');
+            }
         }
     }
 }
@@ -227,8 +233,8 @@ function switchAuthTab(tabKey) {
         document.getElementById(`form-${k === 'seller' ? 'seller-login' : k === 'mlot-login' ? 'mlot-login' : 'admin-login'}`).classList.toggle('hidden', k !== tabKey);
     });
     if (document.getElementById('auth-tab-mlot-login')) {
-        document.getElementById('auth-tab-mlot-login').className = `flex-1 py-2 text-xs font-semibold rounded-lg ${tabKey === 'mlot-login' ? 'bg-indigo-600 text-white shadow' : 'text-slate-300'}`;
-        document.getElementById('auth-tab-seller').className = `flex-1 py-2 text-xs font-semibold rounded-lg ${tabKey === 'seller' ? 'bg-emerald-600 text-white shadow' : 'text-slate-300'}`;
+        document.getElementById('auth-tab-mlot-login').className = `flex-1 py-2 text-xs font-bold rounded-xl ${tabKey === 'mlot-login' ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md' : 'text-slate-300'}`;
+        document.getElementById('auth-tab-seller').className = `flex-1 py-2 text-xs font-bold rounded-xl ${tabKey === 'seller' ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md' : 'text-slate-300'}`;
     }
 }
 
@@ -351,33 +357,43 @@ async function approveMlotPayment(payId, mlotId) {
     await renewMlot(mlotId);
 }
 
-// ================= HISTORY-AWARE NAVIGATION & BACK GESTURE SUPPORT =================
-function switchTab(tabName, push = true) {
-    document.querySelectorAll('.app-page').forEach(page => page.classList.add('hidden'));
-    
+// ================= WHATSAPP-STYLE TAB SWITCHING WITH SLIDE ANIMATION =================
+function switchTab(tabName, push = true, direction = 'left') {
+    const tabs = ['sale', 'purchase', 'master', 'account'];
     let targetPageId = `page-${tabName}`;
     if (currentUserRole === 'seller' && tabName === 'account') {
         targetPageId = 'page-seller-account';
     }
-    
-    const targetElement = document.getElementById(targetPageId);
-    if (targetElement) targetElement.classList.remove('hidden');
 
+    // Hide all pages first and clear slide classes
+    document.querySelectorAll('.app-page').forEach(page => {
+        page.classList.add('hidden');
+        page.classList.remove('tab-slide-left', 'tab-slide-right');
+    });
+
+    const targetElement = document.getElementById(targetPageId);
+    if (targetElement) {
+        targetElement.classList.remove('hidden');
+        targetElement.classList.add(direction === 'right' ? 'tab-slide-right' : 'tab-slide-left');
+    }
+
+    // Update Footer Navigation UI & Active Styling
     document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.className = "nav-btn flex flex-col items-center justify-center w-16 py-1 text-slate-400 transition-all";
-        const span = btn.querySelector('span'); if (span) span.className = "text-[10px] font-medium";
+        btn.className = "nav-btn flex flex-col items-center justify-center w-16 py-1 text-slate-400 hover:text-slate-600 transition-transform duration-200 active:scale-75 group";
     });
 
     const activeBtn = document.getElementById(`nav-${tabName}`);
     if (activeBtn) {
-        activeBtn.className = tabName === 'master' ? "nav-btn flex flex-col items-center justify-center px-3 py-0.5 text-indigo-600 transition-all" : "nav-btn flex flex-col items-center justify-center w-16 py-1 text-indigo-600 transition-all";
-        activeBtn.querySelector('span').className = "text-[10px] font-bold";
+        activeBtn.className = tabName === 'master'
+            ? "nav-btn flex flex-col items-center justify-center px-3 py-0.5 text-indigo-600 transition-transform duration-200 active:scale-75"
+            : "nav-btn flex flex-col items-center justify-center w-16 py-1 text-indigo-600 transition-transform duration-200 active:scale-75 group";
     }
 
     if (push) {
         history.pushState({ type: 'tab', name: tabName }, '', '');
     }
 
+    // Refresh page data
     if (tabName === 'purchase') {
         const stockDateInput = document.getElementById('stock-filter-date');
         if (!stockDateInput.value) stockDateInput.value = getISODateString();
@@ -508,10 +524,10 @@ function selectStockCategory(cat) {
         const btn = document.getElementById(`cat-${c}`);
         if (btn) {
             const isActive = cat.toLowerCase().replace(/\s+/g, '') === c;
-            btn.className = `stock-cat-btn py-3 px-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 active:scale-95 ${
+            btn.className = `stock-cat-btn py-3 px-2 rounded-2xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 active:scale-95 ${
                 isActive 
                     ? 'bg-indigo-600 text-white shadow-md' 
-                    : 'bg-white text-slate-700 border border-slate-200 shadow-xs hover:bg-slate-50'
+                    : 'bg-white/90 backdrop-blur-md text-slate-700 border border-slate-200/80 shadow-xs hover:bg-slate-50'
             }`;
         }
     });
@@ -525,10 +541,10 @@ function selectSellerStockCategory(cat) {
         const btn = document.getElementById(`s-cat-${c}`);
         if (btn) {
             const isActive = cat.toLowerCase().replace(/\s+/g, '') === c;
-            btn.className = `s-stock-cat-btn py-2.5 px-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 active:scale-95 ${
+            btn.className = `s-stock-cat-btn py-3 px-2 rounded-2xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 active:scale-95 ${
                 isActive 
                     ? 'bg-indigo-600 text-white shadow-md' 
-                    : 'bg-white text-slate-700 border border-slate-200 shadow-xs hover:bg-slate-50'
+                    : 'bg-white/90 backdrop-blur-md text-slate-700 border border-slate-200/80 shadow-xs hover:bg-slate-50'
             }`;
         }
     });
@@ -587,7 +603,7 @@ async function renderPurchaseAvailableStock() {
         if (tickets.length === 0) return;
         totalAvail += tickets.length;
         let badges = tickets.map(t => `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-mono px-2 py-0.5 rounded-md inline-block m-0.5">${t}</span>`).join('');
-        container.innerHTML += `<div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2"><div class="flex justify-between items-center border-b border-slate-200 pb-1.5"><span class="text-xs font-bold text-slate-800">Series: ${series}</span><span class="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">${tickets.length} Left</span></div><div class="flex flex-wrap max-h-[140px] overflow-y-auto">${badges}</div></div>`;
+        container.innerHTML += `<div class="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2"><div class="flex justify-between items-center border-b border-slate-200 pb-1.5"><span class="text-xs font-bold text-slate-800">Series: ${series}</span><span class="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">${tickets.length} Left</span></div><div class="flex flex-wrap max-h-[140px] overflow-y-auto">${badges}</div></div>`;
     });
     document.getElementById('available-total-badge').innerText = `${totalAvail} Available`;
 }
@@ -627,7 +643,7 @@ async function renderSellerAvailableStockIndividual() {
         if (tickets.length === 0) return;
         totalAvail += tickets.length;
         let badges = tickets.map(t => `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-mono px-2 py-0.5 rounded-md inline-block m-0.5">${t}</span>`).join('');
-        container.innerHTML += `<div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2"><div class="flex justify-between items-center border-b border-slate-200 pb-1.5"><span class="text-xs font-bold text-slate-800">Series: ${series}</span><span class="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">${tickets.length} Left</span></div><div class="flex flex-wrap max-h-[140px] overflow-y-auto">${badges}</div></div>`;
+        container.innerHTML += `<div class="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2"><div class="flex justify-between items-center border-b border-slate-200 pb-1.5"><span class="text-xs font-bold text-slate-800">Series: ${series}</span><span class="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">${tickets.length} Left</span></div><div class="flex flex-wrap max-h-[140px] overflow-y-auto">${badges}</div></div>`;
     });
     document.getElementById('seller-available-count').innerText = `${totalAvail} Available`;
 }
@@ -761,7 +777,7 @@ function parseReceiptText(text, unitPrice) {
             let group = match[4].toUpperCase();
             let rawRange = match[5];
 
-            // Normalization rule: E501 -> E50, D501 -> D50, E501 -> E50
+            // Normalization rule: E501 -> E50, D501 -> D50, M501 -> M50
             if ((rawSeries.startsWith('E') || rawSeries.startsWith('D') || rawSeries.startsWith('M')) && rawSeries.endsWith('01') && rawSeries.length > 3) {
                 rawSeries = rawSeries.substring(0, rawSeries.length - 1);
             }
@@ -1580,7 +1596,7 @@ async function submitSellerUnsoldQuickEntry(event) {
     }
 }
 
-// ================= GENERAL CRUD & MISC =================
+// ================= GENERAL CRUD & MASTER TABLES =================
 function openAddSellerPage() {
     openSubPage('page-add-seller');
     document.getElementById('seller-userid').value = currentMlotId || '';
