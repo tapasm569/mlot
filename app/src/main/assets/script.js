@@ -124,7 +124,6 @@ function handleWhatsAppSwipe(startX, startY, endX, endY) {
     const diffX = endX - startX;
     const diffY = endY - startY;
 
-    // Minimum 40px horizontal swipe threshold, keeping movement mostly horizontal
     if (Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY) * 1.2) {
         const tabs = ['sale', 'purchase', 'master', 'account'];
         let currentTabName = 'sale';
@@ -139,12 +138,10 @@ function handleWhatsAppSwipe(startX, startY, endX, endY) {
         if (currentIndex === -1) return;
 
         if (diffX < 0) {
-            // Swiped Left -> Move Next (Slide in from Right)
             if (currentIndex < tabs.length - 1) {
                 switchTab(tabs[currentIndex + 1], true, 'left');
             }
         } else {
-            // Swiped Right -> Move Previous (Slide in from Left)
             if (currentIndex > 0) {
                 switchTab(tabs[currentIndex - 1], true, 'right');
             }
@@ -365,7 +362,6 @@ function switchTab(tabName, push = true, direction = 'left') {
         targetPageId = 'page-seller-account';
     }
 
-    // Hide all pages first and clear slide classes
     document.querySelectorAll('.app-page').forEach(page => {
         page.classList.add('hidden');
         page.classList.remove('tab-slide-left', 'tab-slide-right');
@@ -377,7 +373,6 @@ function switchTab(tabName, push = true, direction = 'left') {
         targetElement.classList.add(direction === 'right' ? 'tab-slide-right' : 'tab-slide-left');
     }
 
-    // Update Footer Navigation UI & Active Styling
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.className = "nav-btn flex flex-col items-center justify-center w-16 py-1 text-slate-400 hover:text-slate-600 transition-transform duration-200 active:scale-75 group";
     });
@@ -393,7 +388,6 @@ function switchTab(tabName, push = true, direction = 'left') {
         history.pushState({ type: 'tab', name: tabName }, '', '');
     }
 
-    // Refresh page data
     if (tabName === 'purchase') {
         const stockDateInput = document.getElementById('stock-filter-date');
         if (!stockDateInput.value) stockDateInput.value = getISODateString();
@@ -684,7 +678,6 @@ function calculatePurchaseCost() {
     document.getElementById('pur-total-amount').innerText = `₹${((calc.qty || 0) * price).toFixed(2)}`;
 }
 
-// Preprocess image on canvas to boost text contrast for OCR
 function preprocessImageForOCR(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -755,7 +748,6 @@ async function processImportedTicketFile() {
             logger: m => console.log(m)
         });
 
-        console.log("OCR Extracted Text:\n", text);
         parseReceiptText(text, unitPrice);
 
     } catch (err) {
@@ -777,7 +769,6 @@ function parseReceiptText(text, unitPrice) {
             let group = match[4].toUpperCase();
             let rawRange = match[5];
 
-            // Normalization rule: E501 -> E50, D501 -> D50, M501 -> M50
             if ((rawSeries.startsWith('E') || rawSeries.startsWith('D') || rawSeries.startsWith('M')) && rawSeries.endsWith('01') && rawSeries.length > 3) {
                 rawSeries = rawSeries.substring(0, rawSeries.length - 1);
             }
@@ -1475,6 +1466,7 @@ async function submitUnsoldDetailed(event) {
     }
 }
 
+// SCHEMA FIX APPLIED: Omitted is_quick so Supabase does not reject it
 async function submitUnsoldQuickEntry(event) {
     event.preventDefault();
     const code = document.getElementById('unsold-q-seller-code').value;
@@ -1490,7 +1482,6 @@ async function submitUnsoldQuickEntry(event) {
         ticket_range: `Quick Qty: ${qty}`, 
         qty: parseInt(qty), 
         price_raw: parseFloat(qty * activeQuickUnsoldSetPrice), 
-        is_quick: true, 
         mlot_id: String(currentMlotId) 
     };
 
@@ -1567,6 +1558,7 @@ async function submitSellerUnsold(event) {
     }
 }
 
+// SCHEMA FIX APPLIED: Omitted is_quick so Supabase does not reject it
 async function submitSellerUnsoldQuickEntry(event) {
     event.preventDefault();
     const qty = parseInt(document.getElementById('s-unsold-q-qty').value) || 0;
@@ -1582,7 +1574,6 @@ async function submitSellerUnsoldQuickEntry(event) {
         ticket_range: `Quick Qty: ${qty}`, 
         qty, 
         price_raw: qty * activeSellerUnsoldSetPrice, 
-        is_quick: true, 
         mlot_id: currentMlotId 
     };
 
@@ -2001,6 +1992,7 @@ async function openVerifyUnsoldModal() {
 
 function closeVerifyUnsoldModal() { toggleModal('verify-unsold-modal', false); }
 
+// SCHEMA FIX APPLIED: Uses item.series === 'QUICK' to detect quick returns
 async function verifySingleUnsold(id) {
     const { data: item } = await _supabase.from('pending_unsold').select('*').eq('id', id).single();
     if (!item) return;
@@ -2009,7 +2001,7 @@ async function verifySingleUnsold(id) {
         date: formatToDBDate(item.date), 
         code: item.code, 
         name: item.name, 
-        item: item.item,
+        item: item.item, 
         series: item.series, 
         ticket_range: item.ticket_range, 
         qty: item.qty, 
@@ -2017,7 +2009,7 @@ async function verifySingleUnsold(id) {
         mlot_id: item.mlot_id
     }]);
 
-    if (item.is_quick) {
+    if (item.series === 'QUICK' || item.is_quick) {
         const { data: seller } = await _supabase.from('sellers').select('*').eq('mlot_id', currentMlotId).eq('code', item.code).single();
         if (seller) {
             await _supabase.from('sellers').update({ today_payment: (seller.today_payment || 0) + (item.price_raw || 0) }).eq('mlot_id', currentMlotId).eq('code', item.code);
