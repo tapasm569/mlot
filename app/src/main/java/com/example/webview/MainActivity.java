@@ -9,11 +9,13 @@ import android.os.Bundle;
 import android.util.Base64;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
+import android.webkit.JsResult;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.Toast;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 
@@ -54,8 +56,22 @@ public class MainActivity extends AppCompatActivity {
             // Register AndroidBridge with the direct PDF opener and WhatsApp share methods
             webView.addJavascriptInterface(new WebAppInterface(this), "AndroidBridge");
 
-            // CRITICAL: WebChromeClient enables <input type="file"> to open the phone's gallery/camera/file manager
+            // WebChromeClient: Custom alert dialog + file chooser support
             webView.setWebChromeClient(new WebChromeClient() {
+
+                // Replaces 'The page at "file://" says' with a clean native alert dialog
+                @Override
+                public boolean onJsAlert(WebView view, String url, String message, final JsResult result) {
+                    new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("MLOT Notification")
+                        .setMessage(message)
+                        .setPositiveButton("OK", (dialog, which) -> result.confirm())
+                        .setOnCancelListener(dialog -> result.cancel())
+                        .setCancelable(false)
+                        .show();
+                    return true;
+                }
+
                 @Override
                 public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
                     if (uploadMessage != null) {
@@ -150,10 +166,9 @@ public class MainActivity extends AppCompatActivity {
                         pdfFile
                 );
 
-                // Clean phone number: remove spaces, symbols, and formatting
                 String cleanPhone = phoneNumber != null ? phoneNumber.replaceAll("[^0-9]", "") : "";
                 if (cleanPhone.length() == 10) {
-                    cleanPhone = "91" + cleanPhone; // Default to India (+91) if standard 10 digits
+                    cleanPhone = "91" + cleanPhone;
                 }
 
                 Intent shareIntent = new Intent(Intent.ACTION_SEND);
@@ -170,7 +185,6 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     mContext.startActivity(shareIntent);
                 } catch (Exception noWhatsApp) {
-                    // Try WhatsApp Business if normal WhatsApp isn't present
                     shareIntent.setPackage("com.whatsapp.w4b");
                     mContext.startActivity(shareIntent);
                 }
@@ -203,5 +217,4 @@ public class MainActivity extends AppCompatActivity {
             super.onBackPressed();
         }
     }
-                                   }
-                    
+                                                     }
